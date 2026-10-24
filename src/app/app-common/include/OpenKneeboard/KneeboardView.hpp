@@ -151,6 +151,7 @@ class KneeboardView final : private EventReceiver,
   std::unique_ptr<IUILayer> mFooterUILayer;
   std::shared_ptr<IUILayer> mBookmarksUILayer;
   std::unique_ptr<TabViewUILayer> mTabViewUILayer;
+  std::unique_ptr<IUILayer> mMilitaryTabletUILayer;
 
   std::vector<EventHandlerToken> mTabEvents;
 

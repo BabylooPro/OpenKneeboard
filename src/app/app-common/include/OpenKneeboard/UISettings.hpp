@@ -23,6 +23,7 @@ struct InGameUISettings final {
   bool mFooterEnabled = true;
   bool mFooterFrameCountEnabled = false;
   bool mBookmarksBarEnabled = true;
+  bool mMilitaryTabletThemeEnabled = false;
 
   constexpr bool operator==(const InGameUISettings&) const noexcept = default;
 };

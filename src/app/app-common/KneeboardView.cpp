@@ -12,6 +12,7 @@
 #include <OpenKneeboard/ITab.hpp>
 #include <OpenKneeboard/KneeboardState.hpp>
 #include <OpenKneeboard/KneeboardView.hpp>
+#include <OpenKneeboard/MilitaryTabletUILayer.hpp>
 #include <OpenKneeboard/PluginTab.hpp>
 #include <OpenKneeboard/SHM/ActiveConsumers.hpp>
 #include <OpenKneeboard/TabView.hpp>
@@ -44,6 +45,7 @@ KneeboardView::KneeboardView(
   mFooterUILayer = std::make_unique<FooterUILayer>(dxr, kneeboard);
   mBookmarksUILayer = BookmarksUILayer::Create(dxr, kneeboard, this);
   mTabViewUILayer = std::make_unique<TabViewUILayer>(dxr);
+  mMilitaryTabletUILayer = std::make_unique<MilitaryTabletUILayer>(dxr);
 
   this->UpdateUILayers();
 
@@ -78,6 +80,9 @@ void KneeboardView::UpdateUILayers() {
   decltype(mUILayers) layers;
 
   const auto settings = mKneeboard->GetUISettings().mInGameUI;
+  if (settings.mMilitaryTabletThemeEnabled) {
+    layers.push_back(mMilitaryTabletUILayer.get());
+  }
   if (settings.mBookmarksBarEnabled) {
     layers.push_back(mBookmarksUILayer.get());
   }

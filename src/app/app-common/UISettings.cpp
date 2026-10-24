@@ -15,7 +15,8 @@ OPENKNEEBOARD_DEFINE_SPARSE_JSON(
   mHeaderEnabled,
   mFooterEnabled,
   mFooterFrameCountEnabled,
-  mBookmarksBarEnabled);
+  mBookmarksBarEnabled,
+  mMilitaryTabletThemeEnabled);
 
 OPENKNEEBOARD_DEFINE_SPARSE_JSON(
   TintSettings,

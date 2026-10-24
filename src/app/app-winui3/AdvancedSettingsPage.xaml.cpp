@@ -208,6 +208,20 @@ OpenKneeboard::fire_and_forget AdvancedSettingsPage::InGameFooterFrameCount(
   co_await mKneeboard->SetUISettings(s);
 }
 
+bool AdvancedSettingsPage::InGameMilitaryTabletTheme() const noexcept {
+  return mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled;
+}
+
+OpenKneeboard::fire_and_forget AdvancedSettingsPage::InGameMilitaryTabletTheme(
+  bool value) noexcept {
+  auto s = mKneeboard->GetUISettings();
+  if (value == s.mInGameUI.mMilitaryTabletThemeEnabled) {
+    co_return;
+  }
+  s.mInGameUI.mMilitaryTabletThemeEnabled = value;
+  co_await mKneeboard->SetUISettings(s);
+}
+
 uint32_t AdvancedSettingsPage::MinimumPenRadius() {
   return mKneeboard->GetDoodlesSettings().mPen.mMinimumRadius;
 }

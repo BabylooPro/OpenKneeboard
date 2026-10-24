@@ -64,6 +64,9 @@ struct AdvancedSettingsPage
   bool InGameFooterFrameCount() const noexcept;
   OpenKneeboard::fire_and_forget InGameFooterFrameCount(bool) noexcept;
 
+  bool InGameMilitaryTabletTheme() const noexcept;
+  OpenKneeboard::fire_and_forget InGameMilitaryTabletTheme(bool) noexcept;
+
   OpenKneeboard::fire_and_forget RestoreDoodleDefaults(
     Windows::Foundation::IInspectable,
     Windows::Foundation::IInspectable) noexcept;

@@ -297,6 +297,11 @@
           OnContent="The number of OpenKneeboard frames is shown"
           IsOn="{x:Bind InGameFooterFrameCount}"
           IsEnabled="{x:Bind InGameFooter,Mode=OneWay}"/>
+        <ToggleSwitch
+          Header="Military tablet theme"
+          OffContent="Pages are shown without a frame"
+          OnContent="Every tab is shown inside a rugged tablet bezel"
+          IsOn="{x:Bind InGameMilitaryTabletTheme}"/>
       </StackPanel>
       <Grid ColumnDefinitions="*, Auto">
         <TextBlock

@@ -1,6 +1,7 @@
 set(
     DATA_SOURCES
     DCS-Aircraft-Mapping.json
+    military-tablet-bezel.png
     OpenKneeboardNative.js
     OpenKneeboardAPI.js
     SimHub.js
