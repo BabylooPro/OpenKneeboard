@@ -5,6 +5,7 @@
 #include <OpenKneeboard/MilitaryTabletUILayer.hpp>
 
 #include <OpenKneeboard/dprint.hpp>
+#include <OpenKneeboard/format/filesystem.hpp>
 #include <OpenKneeboard/tracing.hpp>
 
 #include <algorithm>
