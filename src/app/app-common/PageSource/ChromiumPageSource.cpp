@@ -10,6 +10,7 @@
 
 #include <OpenKneeboard/ChromiumPageSource.hpp>
 #include <OpenKneeboard/DoodleRenderer.hpp>
+#include <OpenKneeboard/KneeboardState.hpp>
 
 #include <OpenKneeboard/config.hpp>
 #include <OpenKneeboard/hresult.hpp>
@@ -108,6 +109,18 @@ CefRefPtr<ChromiumPageSource::Client> ChromiumPageSource::CreateClient(
     {"AvailableExperimentalFeatures",
      Client::GetSupportedExperimentalFeatures()},
     {"VirtualHosts", nlohmann::json::object({})},
+    {
+      "InGameUI",
+      {
+        {
+          "Theme",
+          (mKneeboard
+           && mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled)
+            ? "MilitaryTablet"
+            : "Default",
+        },
+      },
+    },
   };
   extraData->SetString("InitData", initData.dump());
   extraData->SetBool("IntegrateWithSimHub", mSettings.mIntegrateWithSimHub);

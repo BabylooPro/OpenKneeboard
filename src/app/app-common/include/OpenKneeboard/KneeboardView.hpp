@@ -27,6 +27,7 @@ class D2DErrorRenderer;
 class TabView;
 class IUILayer;
 class KneeboardState;
+class MilitaryTabletViewportUILayer;
 class TabViewUILayer;
 enum class UserAction;
 struct CursorEvent;
@@ -102,6 +103,8 @@ class KneeboardView final : private EventReceiver,
 
   void PostCustomAction(std::string_view id, const nlohmann::json& arg);
 
+  MilitaryTabletViewportUILayer* GetMilitaryTabletViewport() const noexcept;
+
   // Not just overloading std::swap because this intentionally does not swap IDs
   void SwapState(KneeboardView& other);
 
@@ -147,6 +150,7 @@ class KneeboardView final : private EventReceiver,
   winrt::com_ptr<ID2D1SolidColorBrush> mErrorBackgroundBrush;
 
   std::vector<IUILayer*> mUILayers {};
+  std::unique_ptr<MilitaryTabletViewportUILayer> mMilitaryTabletViewportUILayer;
   std::shared_ptr<IUILayer> mHeaderUILayer;
   std::unique_ptr<IUILayer> mFooterUILayer;
   std::shared_ptr<IUILayer> mBookmarksUILayer;

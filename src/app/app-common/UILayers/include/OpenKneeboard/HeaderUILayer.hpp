@@ -10,6 +10,7 @@
 #include <OpenKneeboard/Events.hpp>
 #include <OpenKneeboard/FlyoutMenuUILayer.hpp>
 #include <OpenKneeboard/ISelectableToolbarItem.hpp>
+#include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/TabView.hpp>
 #include <OpenKneeboard/UILayerBase.hpp>
 
@@ -78,6 +79,7 @@ class HeaderUILayer final : public UILayerBase,
   winrt::com_ptr<ID2D1Brush> mHoverButtonBrush;
   winrt::com_ptr<ID2D1Brush> mActiveButtonBrush;
   winrt::com_ptr<ID2D1Brush> mActiveViewSeparatorBrush;
+  MilitaryTabletTheme::Brushes mMilitaryTabletBrushes;
 
   struct Button {
     D2D1_RECT_F mRect {};
@@ -85,6 +87,16 @@ class HeaderUILayer final : public UILayerBase,
 
     bool operator==(const Button&) const noexcept;
   };
+
+  bool IsMilitaryTabletThemeEnabled() const;
+  void DrawMilitaryTabletButton(
+    ID2D1DeviceContext*,
+    const Button&,
+    const D2D1_RECT_F& rect,
+    bool hover,
+    bool pressed,
+    IDWriteTextFormat*,
+    float strokeWidth) const;
 
   struct Toolbar {
     std::weak_ptr<TabView> mTabView {};

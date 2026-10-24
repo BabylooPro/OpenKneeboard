@@ -35,7 +35,8 @@ class FlyoutMenuUILayer final
     const std::vector<std::shared_ptr<IToolbarItem>>& items,
     D2D1_POINT_2F preferredTopLeft01,
     D2D1_POINT_2F preferredTopRight01,
-    Corner preferredCorner);
+    Corner preferredCorner,
+    bool militaryTabletTheme = false);
   virtual ~FlyoutMenuUILayer();
 
   virtual void PostCursorEvent(
@@ -60,18 +61,21 @@ class FlyoutMenuUILayer final
     const std::vector<std::shared_ptr<IToolbarItem>>& items,
     D2D1_POINT_2F preferredTopLeft01,
     D2D1_POINT_2F preferredTopRight01,
-    Corner preferredCorner);
+    Corner preferredCorner,
+    bool militaryTabletTheme);
   audited_ptr<DXResources> mDXResources;
   std::vector<std::shared_ptr<IToolbarItem>> mItems;
   D2D1_POINT_2F mPreferredTopLeft01 {};
   D2D1_POINT_2F mPreferredTopRight01 {};
   Corner mPreferredAnchor;
+  bool mMilitaryTabletTheme {false};
 
   winrt::com_ptr<ID2D1SolidColorBrush> mBGOverpaintBrush;
   winrt::com_ptr<ID2D1SolidColorBrush> mMenuBGBrush;
   winrt::com_ptr<ID2D1SolidColorBrush> mMenuHoverBGBrush;
   winrt::com_ptr<ID2D1SolidColorBrush> mMenuFGBrush;
   winrt::com_ptr<ID2D1SolidColorBrush> mMenuDisabledFGBrush;
+  winrt::com_ptr<ID2D1SolidColorBrush> mMenuBorderBrush;
 
   std::optional<PixelRect> mLastRenderRect;
 

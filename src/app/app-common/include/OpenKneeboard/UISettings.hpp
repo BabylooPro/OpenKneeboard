@@ -24,6 +24,7 @@ struct InGameUISettings final {
   bool mFooterFrameCountEnabled = false;
   bool mBookmarksBarEnabled = true;
   bool mMilitaryTabletThemeEnabled = false;
+  bool mMilitaryTabletLandscape = false;
 
   constexpr bool operator==(const InGameUISettings&) const noexcept = default;
 };

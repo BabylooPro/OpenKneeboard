@@ -13,6 +13,7 @@
 #include <OpenKneeboard/KneeboardState.hpp>
 #include <OpenKneeboard/KneeboardView.hpp>
 #include <OpenKneeboard/MilitaryTabletUILayer.hpp>
+#include <OpenKneeboard/MilitaryTabletViewportUILayer.hpp>
 #include <OpenKneeboard/PluginTab.hpp>
 #include <OpenKneeboard/SHM/ActiveConsumers.hpp>
 #include <OpenKneeboard/TabView.hpp>
@@ -45,12 +46,22 @@ KneeboardView::KneeboardView(
   mFooterUILayer = std::make_unique<FooterUILayer>(dxr, kneeboard);
   mBookmarksUILayer = BookmarksUILayer::Create(dxr, kneeboard, this);
   mTabViewUILayer = std::make_unique<TabViewUILayer>(dxr);
-  mMilitaryTabletUILayer = std::make_unique<MilitaryTabletUILayer>(dxr);
+  mMilitaryTabletViewportUILayer
+    = std::make_unique<MilitaryTabletViewportUILayer>(dxr, this);
+  mMilitaryTabletUILayer = std::make_unique<MilitaryTabletUILayer>(
+    dxr, kneeboard, mMilitaryTabletViewportUILayer.get());
 
   this->UpdateUILayers();
 
   for (auto layer: mUILayers) {
     AddEventListener(layer->evNeedsRepaintEvent, this->evNeedsRepaintEvent);
+  }
+  // The theme layers may only be added to the stack by a later settings change
+  for (IUILayer* layer: std::initializer_list<IUILayer*> {
+         mMilitaryTabletUILayer.get(), mMilitaryTabletViewportUILayer.get()}) {
+    if (std::ranges::find(mUILayers, layer) == mUILayers.end()) {
+      AddEventListener(layer->evNeedsRepaintEvent, this->evNeedsRepaintEvent);
+    }
   }
   AddEventListener(this->evCurrentTabChangedEvent, this->evNeedsRepaintEvent);
   AddEventListener(this->evCursorEvent, this->evNeedsRepaintEvent);
@@ -91,6 +102,9 @@ void KneeboardView::UpdateUILayers() {
   }
   if (settings.mFooterEnabled) {
     layers.push_back(mFooterUILayer.get());
+  }
+  if (settings.mMilitaryTabletThemeEnabled) {
+    layers.push_back(mMilitaryTabletViewportUILayer.get());
   }
 
   layers.push_back(mTabViewUILayer.get());
@@ -854,6 +868,11 @@ void KneeboardView::PostCustomAction(
     return;
   }
   it->PostCustomAction(mRuntimeID, id, arg);
+}
+
+MilitaryTabletViewportUILayer* KneeboardView::GetMilitaryTabletViewport()
+  const noexcept {
+  return mMilitaryTabletViewportUILayer.get();
 }
 
 std::vector<winrt::guid> KneeboardView::GetTabIDs() const noexcept {

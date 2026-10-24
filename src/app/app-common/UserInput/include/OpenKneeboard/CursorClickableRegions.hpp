@@ -41,6 +41,13 @@ class CursorClickableRegions final
     return mHoverButton;
   }
 
+  std::optional<Button> GetPressedButton() const {
+    const auto keepAlive = this->shared_from_this();
+
+    std::unique_lock lock(mMutex);
+    return mPressedButton;
+  }
+
   bool HaveHoverOrPendingClick() const {
     const auto keepAlive = this->shared_from_this();
 

@@ -10,6 +10,7 @@
 #include <OpenKneeboard/IToolbarFlyout.hpp>
 #include <OpenKneeboard/IToolbarItemWithConfirmation.hpp>
 #include <OpenKneeboard/IToolbarItemWithVisibility.hpp>
+#include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/ToolbarAction.hpp>
 #include <OpenKneeboard/ToolbarSeparator.hpp>
 
@@ -25,9 +26,15 @@ std::shared_ptr<FlyoutMenuUILayer> FlyoutMenuUILayer::Create(
   const std::vector<std::shared_ptr<IToolbarItem>>& items,
   D2D1_POINT_2F preferredTopLeft01,
   D2D1_POINT_2F preferredTopRight01,
-  Corner preferredCorner) {
+  Corner preferredCorner,
+  bool militaryTabletTheme) {
   return std::shared_ptr<FlyoutMenuUILayer>(new FlyoutMenuUILayer(
-    dxr, items, preferredTopLeft01, preferredTopRight01, preferredCorner));
+    dxr,
+    items,
+    preferredTopLeft01,
+    preferredTopRight01,
+    preferredCorner,
+    militaryTabletTheme));
 }
 
 FlyoutMenuUILayer::FlyoutMenuUILayer(
@@ -35,12 +42,14 @@ FlyoutMenuUILayer::FlyoutMenuUILayer(
   const std::vector<std::shared_ptr<IToolbarItem>>& items,
   D2D1_POINT_2F preferredTopLeft01,
   D2D1_POINT_2F preferredTopRight01,
-  Corner preferredAnchor)
+  Corner preferredAnchor,
+  bool militaryTabletTheme)
   : mDXResources(dxr),
     mItems(items),
     mPreferredTopLeft01(preferredTopLeft01),
     mPreferredTopRight01(preferredTopRight01),
-    mPreferredAnchor(preferredAnchor) {
+    mPreferredAnchor(preferredAnchor),
+    mMilitaryTabletTheme(militaryTabletTheme) {
   auto ctx = dxr->mD2DDeviceContext;
   ctx->CreateSolidColorBrush(
     {1.0f, 1.0f, 1.0f, 0.6f}, D2D1::BrushProperties(), mBGOverpaintBrush.put());
@@ -54,6 +63,15 @@ FlyoutMenuUILayer::FlyoutMenuUILayer(
     {0.4f, 0.4f, 0.4f, 0.5f},
     D2D1::BrushProperties(),
     reinterpret_cast<ID2D1SolidColorBrush**>(mMenuDisabledFGBrush.put()));
+  if (militaryTabletTheme) {
+    const auto brushes = MilitaryTabletTheme::Brushes::Create(ctx.get());
+    mBGOverpaintBrush = brushes.mOverpaint;
+    mMenuBGBrush = brushes.mMenu;
+    mMenuHoverBGBrush = brushes.mMenuHover;
+    mMenuFGBrush = brushes.mForeground;
+    mMenuDisabledFGBrush = brushes.mDisabled;
+    mMenuBorderBrush = brushes.mEdge;
+  }
 
   for (const auto& item: mItems) {
     auto visibility
@@ -151,6 +169,11 @@ task<void> FlyoutMenuUILayer::Render(
   d2d->FillRoundedRectangle(
     D2D1::RoundedRect(menu.mRect, menu.mMargin, menu.mMargin),
     mMenuBGBrush.get());
+  if (mMenuBorderBrush) {
+    d2d->DrawRoundedRectangle(
+      D2D1::RoundedRect(menu.mRect, menu.mMargin, menu.mMargin),
+      mMenuBorderBrush.get());
+  }
 
   auto dwf = mDXResources->mDWriteFactory;
 
@@ -534,7 +557,8 @@ void FlyoutMenuUILayer::OnClick(const MenuItem& item) {
         / renderSize.Width<float>(),
       (rect.top - mLastRenderRect->Top()) / renderSize.Height<float>(),
     },
-    mPreferredAnchor);
+    mPreferredAnchor,
+    mMilitaryTabletTheme);
   AddEventListener(
     subMenu->evCloseMenuRequestedEvent, this->evCloseMenuRequestedEvent);
   AddEventListener(subMenu->evNeedsRepaintEvent, this->evNeedsRepaintEvent);

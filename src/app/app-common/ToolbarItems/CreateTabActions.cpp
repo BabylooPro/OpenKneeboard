@@ -6,6 +6,7 @@
 #include <OpenKneeboard/ClearUserInputAction.hpp>
 #include <OpenKneeboard/CreateTabActions.hpp>
 #include <OpenKneeboard/KneeboardState.hpp>
+#include <OpenKneeboard/MilitaryTabletAction.hpp>
 #include <OpenKneeboard/NextTabAction.hpp>
 #include <OpenKneeboard/PreviousTabAction.hpp>
 #include <OpenKneeboard/ReloadTabAction.hpp>
@@ -62,7 +63,35 @@ InGameActions InGameActions::Create(
   KneeboardState* kneeboardState,
   const std::shared_ptr<KneeboardView>& kneeboardView,
   const std::shared_ptr<TabView>& tabView) {
-  return {
+  using MilitaryTablet = MilitaryTabletAction::Kind;
+  const bool militaryTablet
+    = kneeboardState->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled;
+  const auto militaryTabletAction = [&](MilitaryTablet kind) -> ItemPtr {
+    return std::make_shared<MilitaryTabletAction>(
+      kneeboardState, kneeboardView, kind);
+  };
+
+  Items more {
+    std::make_shared<SwitchProfileFlyout>(kneeboardState),
+    std::make_shared<SwitchTabFlyout>(kneeboardState, kneeboardView),
+    std::make_shared<ToolbarSeparator>(),
+  };
+  if (militaryTablet) {
+    more.insert(
+      more.end(),
+      {
+        militaryTabletAction(MilitaryTablet::ZoomIn),
+        militaryTabletAction(MilitaryTablet::ZoomOut),
+        militaryTabletAction(MilitaryTablet::FitToPage),
+        militaryTabletAction(MilitaryTablet::FitToWidth),
+        militaryTabletAction(MilitaryTablet::ResetZoom),
+        std::make_shared<ToolbarSeparator>(),
+      });
+  }
+  more.push_back(CreateClearNotesItem(kneeboardState, kneeboardView, tabView));
+  more.push_back(CreateReloadItem(kneeboardState, kneeboardView, tabView));
+
+  InGameActions ret {
       .mLeft = {
     std::make_shared<TabNavigationAction>(tabView),
     std::make_shared<TabFirstPageAction>(tabView),
@@ -70,21 +99,19 @@ InGameActions InGameActions::Create(
     std::make_shared<TabNextPageAction>(kneeboardState, tabView),
       },
       .mRight = {
-    std::make_shared<ToolbarFlyout>(
-      "\ue712",
-      _("More"),
-      Items {
-        std::make_shared<SwitchProfileFlyout>(kneeboardState),
-        std::make_shared<SwitchTabFlyout>(kneeboardState, kneeboardView),
-        std::make_shared<ToolbarSeparator>(),
-        CreateClearNotesItem(kneeboardState, kneeboardView, tabView),
-        CreateReloadItem(kneeboardState, kneeboardView, tabView),
-      }),
+    std::make_shared<ToolbarFlyout>("\ue712", _("More"), more),
     std::make_shared<ToggleBookmarkAction>(kneeboardState, kneeboardView, tabView),
     std::make_shared<PreviousTabAction>(kneeboardState, kneeboardView),
     std::make_shared<NextTabAction>(kneeboardState, kneeboardView),
       },
   };
+  if (militaryTablet) {
+    // Right items are laid out from the right edge: this goes between the
+    // bookmark toggle and the tab buttons
+    ret.mRight.insert(
+      ret.mRight.begin() + 2, militaryTabletAction(MilitaryTablet::Rotate));
+  }
+  return ret;
 }
 
 InAppActions InAppActions::Create(

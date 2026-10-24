@@ -48,6 +48,7 @@ class InterprocessRenderer final
     KneeboardState*);
 
   void PostUserAction(UserAction);
+  bool IsVisible() const noexcept;
   [[nodiscard]] task<void> RenderNow() noexcept;
 
  private:

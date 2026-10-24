@@ -65,6 +65,10 @@ class OpenKneeboardAPI extends EventTarget {
         return this.#runtimeData.Version;
     }
 
+    async GetInGameUITheme() {
+        return this.#runtimeData.InGameUI?.Theme ?? "Default";
+    }
+
     EnableExperimentalFeature(name, version) {
         return this.EnableExperimentalFeatures([{ name, version }]);
     }

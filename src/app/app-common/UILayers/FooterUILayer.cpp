@@ -41,6 +41,7 @@ FooterUILayer::FooterUILayer(
     {0.0f, 0.0f, 0.0f, 1.0f},
     D2D1::BrushProperties(),
     reinterpret_cast<ID2D1SolidColorBrush**>(mForegroundBrush.put()));
+  mMilitaryTabletBrushes = MilitaryTabletTheme::Brushes::Create(ctx.get());
 }
 
 FooterUILayer::~FooterUILayer() {
@@ -122,17 +123,35 @@ task<void> FooterUILayer::Render(
     {rect.Width(), footerHeight},
   };
 
+  // The military tablet stretches the layers to fill its screen, so the
+  // content gets all of the space above the footer
+  const auto inGameUI = mKneeboard->GetUISettings().mInGameUI;
+  const bool militaryTablet = inGameUI.mMilitaryTabletThemeEnabled;
   co_await next.front()->Render(
     rc,
     next.subspan(1),
     context,
-    {
-      rect.mOffset,
-      (metrics.mNextArea.mSize.StaticCast<float>() * scale).Rounded<uint32_t>(),
-    });
+    militaryTablet
+      ? PixelRect {rect.mOffset, {rect.Width(), rect.Height() - footerHeight}}
+      : PixelRect {
+          rect.mOffset,
+          (metrics.mNextArea.mSize.StaticCast<float>() * scale)
+            .Rounded<uint32_t>(),
+        });
 
   auto d2d = rc.d2d();
-  d2d->FillRectangle(footerRect, mBackgroundBrush.get());
+  ID2D1Brush* foregroundBrush = mForegroundBrush.get();
+  if (militaryTablet) {
+    foregroundBrush = mMilitaryTabletBrushes.mForeground.get();
+    d2d->FillRectangle(footerRect, mMilitaryTabletBrushes.mBar.get());
+    const auto edgeY = footerRect.Top<float>() + 0.5f;
+    d2d->DrawLine(
+      {footerRect.Left<float>(), edgeY},
+      {footerRect.Right<float>(), edgeY},
+      mMilitaryTabletBrushes.mEdge.get());
+  } else {
+    d2d->FillRectangle(footerRect, mBackgroundBrush.get());
+  }
 
   FLOAT dpix {}, dpiy {};
   d2d->GetDpi(&dpix, &dpiy);
@@ -170,7 +189,7 @@ task<void> FooterUILayer::Render(
         d2d->DrawTextLayout(
           {margin + rect.Left<float>(), rect.Bottom<float>() - footerHeight},
           clockLayout.get(),
-          mForegroundBrush.get());
+          foregroundBrush);
       };
 
   // Mission time
@@ -190,10 +209,19 @@ task<void> FooterUILayer::Render(
   }
 
   // Frame count
-  if (mKneeboard->GetUISettings().mInGameUI.mFooterFrameCountEnabled) {
+  if (inGameUI.mFooterFrameCountEnabled) {
     drawClock(
       std::format(L"OKB Frame {}", mSHM.GetFrameCountForMetricsOnly()),
       DWRITE_TEXT_ALIGNMENT_CENTER);
+  } else if (militaryTablet && tabView) {
+    const auto pageIDs = tabView->GetPageIDs();
+    const auto page = std::ranges::find(pageIDs, tabView->GetPageID());
+    if (pageIDs.size() > 1 && page != pageIDs.end()) {
+      drawClock(
+        std::format(
+          L"{} / {}", (page - pageIDs.begin()) + 1, pageIDs.size()),
+        DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
   }
 
   // Real time

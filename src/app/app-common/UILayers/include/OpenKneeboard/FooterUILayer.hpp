@@ -6,6 +6,7 @@
 #pragma once
 
 #include <OpenKneeboard/DXResources.hpp>
+#include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/SHM.hpp>
 #include <OpenKneeboard/UILayerBase.hpp>
 
@@ -47,6 +48,7 @@ class FooterUILayer final : public UILayerBase, private EventReceiver {
   audited_ptr<DXResources> mDXResources;
   winrt::com_ptr<ID2D1Brush> mBackgroundBrush;
   winrt::com_ptr<ID2D1Brush> mForegroundBrush;
+  MilitaryTabletTheme::Brushes mMilitaryTabletBrushes;
   std::optional<D2D1_SIZE_F> mLastRenderSize;
 
   DWORD mCurrentGamePID {};

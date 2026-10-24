@@ -43,6 +43,7 @@ BookmarksUILayer::BookmarksUILayer(
     nullptr,
     0,
     mCurrentPageStrokeStyle.put()));
+  mMilitaryTabletBrushes = MilitaryTabletTheme::Brushes::Create(d2d.get());
 }
 
 void BookmarksUILayer::Init() {
@@ -141,6 +142,18 @@ task<void> BookmarksUILayer::Render(
   const auto scale
     = rect.Width<float>() / metrics.mPreferredSize.mPixelSize.mWidth;
 
+  // The military tablet stretches the layers to fill its screen, so the bar
+  // and the content use the full height
+  const bool militaryTablet
+    = mKneeboardState->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled;
+  const auto& brushes = mMilitaryTabletBrushes;
+  const auto backgroundBrush
+    = militaryTablet ? brushes.mBar : mBackgroundBrush;
+  const auto foregroundBrush
+    = militaryTablet ? brushes.mForeground : mTextBrush;
+  const auto hoverBrush = militaryTablet ? brushes.mAccent : mHoverBrush;
+  const auto lineBrush = militaryTablet ? brushes.mEdge : mTextBrush;
+
   auto d2d = rc.d2d();
   d2d->FillRectangle(
     PixelRect {
@@ -150,12 +163,13 @@ task<void> BookmarksUILayer::Render(
         rect.Height(),
       },
     },
-    mBackgroundBrush.get());
+    backgroundBrush.get());
 
   auto [hoverButton, buttons] = this->LayoutButtons()->GetState();
 
   const auto height = metrics.mPreferredSize.mPixelSize.mHeight;
   const auto width = metrics.mNextArea.Left();
+  const auto barHeight = militaryTablet ? rect.Height<float>() : height * scale;
 
   FLOAT dpix {}, dpiy {};
   d2d->GetDpi(&dpix, &dpiy);
@@ -187,16 +201,16 @@ task<void> BookmarksUILayer::Render(
   for (const auto& button: buttons) {
     const D2D1_RECT_F buttonRect {
       rect.Left<float>(),
-      rect.Top() + (button.mRect.top * height * scale),
+      rect.Top() + (button.mRect.top * barHeight),
       rect.Left() + (width * scale),
-      rect.Top() + (button.mRect.bottom * height * scale),
+      rect.Top() + (button.mRect.bottom * barHeight),
     };
     buttonNumber++;
     const auto text = winrt::to_hstring(
       button.mBookmark.mTitle.empty() ? std::format(_("#{}"), buttonNumber)
                                       : button.mBookmark.mTitle);
 
-    auto textBrush = (button == hoverButton) ? mHoverBrush : mTextBrush;
+    auto textBrush = (button == hoverButton) ? hoverBrush : foregroundBrush;
 
     d2d->DrawTextW(
       text.data(), text.size(), textFormat.get(), buttonRect, textBrush.get());
@@ -214,7 +228,7 @@ task<void> BookmarksUILayer::Render(
       d2d->DrawLine(
         {buttonRect.left, buttonRect.top},
         {buttonRect.right, buttonRect.top},
-        mTextBrush.get(),
+        lineBrush.get(),
         2.0f);
     }
   }
@@ -223,6 +237,9 @@ task<void> BookmarksUILayer::Render(
   auto nextArea
     = (metrics.mNextArea.StaticCast<float>() * scale).Rounded<uint32_t>();
   nextArea.mOffset += rect.mOffset;
+  if (militaryTablet) {
+    nextArea.mSize = {rect.Right() - nextArea.Left(), rect.Height()};
+  }
   co_await first->Render(rc, rest, context, nextArea);
   d2d.Reacquire();
 
@@ -232,7 +249,7 @@ task<void> BookmarksUILayer::Render(
     d2d->DrawLine(
       {centerX, rect.Top<float>()},
       {centerX, rect.Bottom<float>()},
-      mTextBrush.get(),
+      lineBrush.get(),
       Thickness);
   }
 }

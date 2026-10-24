@@ -8,6 +8,7 @@
 #include <OpenKneeboard/Bookmark.hpp>
 #include <OpenKneeboard/CursorClickableRegions.hpp>
 #include <OpenKneeboard/DXResources.hpp>
+#include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/UILayerBase.hpp>
 
 #include <shims/winrt/base.h>
@@ -61,6 +62,7 @@ class BookmarksUILayer final
 
   winrt::com_ptr<ID2D1SolidColorBrush> mCurrentPageStrokeBrush;
   winrt::com_ptr<ID2D1StrokeStyle> mCurrentPageStrokeStyle;
+  MilitaryTabletTheme::Brushes mMilitaryTabletBrushes;
 
   struct Button {
     D2D1_RECT_F mRect {};

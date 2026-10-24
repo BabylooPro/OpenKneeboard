@@ -196,6 +196,10 @@ void InterprocessRenderer::PostUserAction(UserAction action) {
   mKneeboard->SetRepaintNeeded();
 }
 
+bool InterprocessRenderer::IsVisible() const noexcept {
+  return mVisible;
+}
+
 InterprocessRenderer::IPCTextureResources*
 InterprocessRenderer::GetIPCTextureResources(
   uint8_t textureIndex,

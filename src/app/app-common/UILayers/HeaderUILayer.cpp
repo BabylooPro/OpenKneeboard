@@ -60,6 +60,12 @@ HeaderUILayer::HeaderUILayer(
     reinterpret_cast<ID2D1SolidColorBrush**>(mHoverButtonBrush.put()));
   mActiveButtonBrush = mHoverButtonBrush;
   mActiveViewSeparatorBrush = mDXResources->mBlackBrush;
+  mMilitaryTabletBrushes = MilitaryTabletTheme::Brushes::Create(ctx.get());
+}
+
+bool HeaderUILayer::IsMilitaryTabletThemeEnabled() const {
+  return mKneeboardState->GetUISettings()
+    .mInGameUI.mMilitaryTabletThemeEnabled;
 }
 
 HeaderUILayer::~HeaderUILayer() {
@@ -172,7 +178,16 @@ task<void> HeaderUILayer::Render(
   {
     auto d2d = rc.d2d();
     d2d->SetTransform(D2D1::Matrix3x2F::Identity());
-    d2d->FillRectangle(headerRect, mHeaderBGBrush.get());
+    if (this->IsMilitaryTabletThemeEnabled()) {
+      d2d->FillRectangle(headerRect, mMilitaryTabletBrushes.mBar.get());
+      const auto edgeY = headerRect.Bottom<float>() - 0.5f;
+      d2d->DrawLine(
+        {headerRect.Left<float>(), edgeY},
+        {headerRect.Right<float>(), edgeY},
+        mMilitaryTabletBrushes.mEdge.get());
+    } else {
+      d2d->FillRectangle(headerRect, mHeaderBGBrush.get());
+    }
     auto headerTextRect = headerRect;
     this->DrawToolbar(context, d2d, rect, headerRect, &headerTextRect);
     this->DrawHeaderText(tabView, d2d, headerTextRect);
@@ -235,6 +250,8 @@ void HeaderUILayer::DrawToolbar(
   if (buttons.empty()) {
     return;
   }
+  const auto pressedButton = toolbar->GetPressedButton();
+  const bool militaryTablet = this->IsMilitaryTabletThemeEnabled();
 
   const auto buttonHeight
     = buttons.front().mRect.bottom - buttons.front().mRect.top;
@@ -274,6 +291,18 @@ void HeaderUILayer::DrawToolbar(
     buttonRect.top += headerRect.Top();
     buttonRect.right += headerRect.Left();
     buttonRect.bottom += headerRect.Top();
+
+    if (militaryTablet) {
+      this->DrawMilitaryTabletButton(
+        d2d,
+        button,
+        buttonRect,
+        hoverButton == button,
+        pressedButton == button,
+        glyphFormat.get(),
+        strokeWidth);
+      continue;
+    }
 
     d2d->DrawRoundedRectangle(
       D2D1::RoundedRect(buttonRect, buttonHeight / 4, buttonHeight / 4),
@@ -476,7 +505,50 @@ void HeaderUILayer::DrawHeaderText(
   headerLayout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
   ctx->DrawTextLayout(
-    textRect.TopLeft(), headerLayout.get(), mHeaderTextBrush.get());
+    textRect.TopLeft(),
+    headerLayout.get(),
+    this->IsMilitaryTabletThemeEnabled()
+      ? mMilitaryTabletBrushes.mForeground.get()
+      : mHeaderTextBrush.get());
+}
+
+void HeaderUILayer::DrawMilitaryTabletButton(
+  ID2D1DeviceContext* d2d,
+  const Button& button,
+  const D2D1_RECT_F& rect,
+  bool hover,
+  bool pressed,
+  IDWriteTextFormat* glyphFormat,
+  float strokeWidth) const {
+  const auto& action = button.mAction;
+  const auto toggle = std::dynamic_pointer_cast<ToolbarToggleAction>(action);
+  const bool enabled = action->IsEnabled();
+  const bool active = enabled && toggle && toggle->IsActive();
+
+  const auto& brushes = mMilitaryTabletBrushes;
+  ID2D1Brush* face = brushes.mFace.get();
+  ID2D1Brush* foreground = brushes.mForeground.get();
+  if (!enabled) {
+    foreground = brushes.mDisabled.get();
+  } else if (pressed) {
+    face = brushes.mFacePressed.get();
+  } else if (hover) {
+    face = brushes.mFaceHover.get();
+    foreground = brushes.mAccent.get();
+  } else if (active) {
+    foreground = brushes.mActive.get();
+  }
+
+  const auto radius = (rect.bottom - rect.top) / 5;
+  const auto roundedRect = D2D1::RoundedRect(rect, radius, radius);
+  d2d->FillRoundedRectangle(roundedRect, face);
+  d2d->DrawRoundedRectangle(
+    roundedRect,
+    active ? brushes.mActive.get() : brushes.mEdge.get(),
+    strokeWidth / 2);
+
+  const auto glyph = winrt::to_hstring(action->GetGlyph());
+  d2d->DrawTextW(glyph.c_str(), glyph.size(), glyphFormat, rect, foreground);
 }
 
 bool HeaderUILayer::Button::operator==(const Button& other) const noexcept {
@@ -506,7 +578,8 @@ void HeaderUILayer::OnClick(const Button& button) {
     flyout->GetSubItems(),
     D2D1_POINT_2F {0.0f, HeaderPercent / 100.0f},
     D2D1_POINT_2F {1.0f, HeaderPercent / 100.0f},
-    FlyoutMenuUILayer::Corner::TopRight);
+    FlyoutMenuUILayer::Corner::TopRight,
+    this->IsMilitaryTabletThemeEnabled());
   AddEventListener(
     secondaryMenu->evNeedsRepaintEvent, this->evNeedsRepaintEvent);
   AddEventListener(
