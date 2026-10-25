@@ -483,7 +483,26 @@ task<void> MainWindow::ShowWarningIfWintabConfiguredButUnusable() {
 task<void> MainWindow::ShowWarningIfOTDIPCConfiguredButUnusable() {
   auto adapter = mKneeboard->GetTabletInputAdapter();
 
-  if ((!adapter) || (!adapter->IsOTDIPCEnabled()) || adapter->HaveAnyTablet()) {
+  if ((!adapter) || (!adapter->IsOTDIPCEnabled())) {
+    co_return;
+  }
+
+  // The OTD-IPC client connects in the background, and only knows the tablet
+  // once the server has described it: this check would otherwise race it
+  constexpr auto PollInterval = std::chrono::milliseconds(250);
+  constexpr auto MaxWait = std::chrono::seconds(10);
+  const auto stop = mFrameLoopStopSource.get_token();
+  for (auto waited = decltype(PollInterval)::zero();
+       waited < MaxWait && !adapter->HaveAnyTablet();
+       waited += PollInterval) {
+    if (
+      co_await OpenKneeboard::resume_after(PollInterval, stop)
+      == TimerResult::Cancelled) {
+      co_return;
+    }
+    co_await mUIThread;
+  }
+  if (adapter->HaveAnyTablet()) {
     co_return;
   }
 
