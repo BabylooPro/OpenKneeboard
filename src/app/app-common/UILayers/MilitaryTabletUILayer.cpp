@@ -48,6 +48,8 @@ constexpr float BrightnessStep = 0.1f;
 // In the dark the case is lit by the cockpit, and mostly by its own screen
 constexpr float NightGlow = 0.03f;
 constexpr float ScreenGlow = 0.07f;
+// Key states are lit like the case, plus a faint backlight to show in the dark
+constexpr float KeyBacklight = 0.2f;
 // The bezel is 2:3, so scaling it in steps of 1/512 gives the canvas the exact
 // same aspect ratio whatever the tab: the game overlay does not shift
 constexpr float ScaleStep = 1.0f / 512;
@@ -95,7 +97,10 @@ MilitaryTabletUILayer::MilitaryTabletUILayer(
     mNotes(notes),
     mBrushes(
       MilitaryTabletTheme::Brushes::Create(dxr->mD2DDeviceContext.get())),
-    mDaylight(kneeboard) {
+    mDaylight(kneeboard),
+    mKeyHoverColor(mBrushes.mHardKeyHover->GetColor()),
+    mKeyPressedColor(mBrushes.mHardKeyPressed->GetColor()),
+    mKeyOutlineColor(mBrushes.mAccent->GetColor()) {
   winrt::check_hresult(dxr->mD2DDeviceContext->CreateEffect(
     CLSID_D2D1ColorMatrix, mBezelEffect.put()));
   AddEventListener(mDaylight.evChangedEvent, this->evNeedsRepaintEvent);
@@ -472,6 +477,21 @@ task<void> MilitaryTabletUILayer::Render(
   d2d->DrawImage(
     mBezelEffect.get(), D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
   d2d->SetTransform(D2D1::Matrix3x2F::Identity());
+
+  const auto keyColor = [&light](const D2D1_COLOR_F& color) {
+    const auto lit = [](float value, float ambient) {
+      return value * (ambient + ((1.0f - ambient) * KeyBacklight));
+    };
+    return D2D1_COLOR_F {
+      lit(color.r, light.mRed),
+      lit(color.g, light.mGreen),
+      lit(color.b, light.mBlue),
+      color.a,
+    };
+  };
+  mBrushes.mHardKeyHover->SetColor(keyColor(mKeyHoverColor));
+  mBrushes.mHardKeyPressed->SetColor(keyColor(mKeyPressedColor));
+  mBrushes.mAccent->SetColor(keyColor(mKeyOutlineColor));
 
   const auto [hoverKey, keys] = mHardKeys->GetState();
   const auto pressedKey = mHardKeys->GetPressedButton();

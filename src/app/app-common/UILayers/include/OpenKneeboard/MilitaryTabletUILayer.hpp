@@ -101,6 +101,10 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
   MilitaryTabletNotesUILayer* mNotes {nullptr};
   MilitaryTabletTheme::Brushes mBrushes;
   MilitaryTabletDaylight mDaylight;
+  // In daylight, before lighting
+  D2D1_COLOR_F mKeyHoverColor {};
+  D2D1_COLOR_F mKeyPressedColor {};
+  D2D1_COLOR_F mKeyOutlineColor {};
   std::shared_ptr<CursorClickableRegions<HardKeyRegion>> mHardKeys;
 
   winrt::com_ptr<ID2D1Bitmap1> mPortraitBezel;
