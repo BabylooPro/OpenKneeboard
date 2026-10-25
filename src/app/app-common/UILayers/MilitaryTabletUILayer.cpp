@@ -1,6 +1,10 @@
 // OpenKneeboard
 //
 // This program is open source; see the LICENSE file in the root of the OpenKneeboard repository.
+
+// Defines the Direct2D effect CLSIDs in this file: nothing links dxguid.lib
+#include <initguid.h>
+
 #include <OpenKneeboard/CursorEvent.hpp>
 #include <OpenKneeboard/Filesystem.hpp>
 #include <OpenKneeboard/InterprocessRenderer.hpp>
@@ -41,6 +45,9 @@ constexpr uint8_t HaloMaxAlpha = 16;
 // The sun keys stop short of black
 constexpr float MinBrightness = 0.1f;
 constexpr float BrightnessStep = 0.1f;
+// In the dark the case is lit by the cockpit, and mostly by its own screen
+constexpr float NightGlow = 0.03f;
+constexpr float ScreenGlow = 0.07f;
 // The bezel is 2:3, so scaling it in steps of 1/512 gives the canvas the exact
 // same aspect ratio whatever the tab: the game overlay does not shift
 constexpr float ScaleStep = 1.0f / 512;
@@ -87,7 +94,11 @@ MilitaryTabletUILayer::MilitaryTabletUILayer(
     mHome(home),
     mNotes(notes),
     mBrushes(
-      MilitaryTabletTheme::Brushes::Create(dxr->mD2DDeviceContext.get())) {
+      MilitaryTabletTheme::Brushes::Create(dxr->mD2DDeviceContext.get())),
+    mDaylight(kneeboard) {
+  winrt::check_hresult(dxr->mD2DDeviceContext->CreateEffect(
+    CLSID_D2D1ColorMatrix, mBezelEffect.put()));
+  AddEventListener(mDaylight.evChangedEvent, this->evNeedsRepaintEvent);
   // Measured on the portrait image
   mHardKeys = CursorClickableRegions<HardKeyRegion>::Create({
     {Key(62, 316, 53, 89), HardKey::NextPage},
@@ -175,6 +186,15 @@ void MilitaryTabletUILayer::ChangeBrightness(float direction) {
     MinBrightness,
     1.0f);
   fire_and_forget::wrap(&KneeboardState::SetUISettings, mKneeboard, settings);
+}
+
+MilitaryTabletDaylight::Light MilitaryTabletUILayer::GetBezelLight() const {
+  const auto glow = NightGlow + (ScreenGlow * this->GetBrightness());
+  const auto lit = [glow](float daylight) {
+    return glow + ((1.0f - glow) * daylight);
+  };
+  const auto daylight = mDaylight.GetLight();
+  return {lit(daylight.mRed), lit(daylight.mGreen), lit(daylight.mBlue)};
 }
 
 bool MilitaryTabletUILayer::IsHardKeyEnabled(HardKey key) const {
@@ -433,9 +453,25 @@ task<void> MilitaryTabletUILayer::Render(
   }
 
   auto d2d = rc.d2d();
+  const auto light = this->GetBezelLight();
+  mBezelEffect->SetInput(0, bezel);
+  winrt::check_hresult(mBezelEffect->SetValue(
+    D2D1_COLORMATRIX_PROP_COLOR_MATRIX,
+    D2D1::Matrix5x4F(
+      light.mRed, 0, 0, 0,
+      0, light.mGreen, 0, 0,
+      0, 0, light.mBlue, 0,
+      0, 0, 0, 1,
+      0, 0, 0, 0)));
+  const auto bezelSize = bezel->GetSize();
+  d2d->SetTransform(
+    D2D1::Matrix3x2F::Scale(
+      rect.Width<float>() / bezelSize.width,
+      rect.Height<float>() / bezelSize.height)
+    * D2D1::Matrix3x2F::Translation(rect.Left<float>(), rect.Top<float>()));
+  d2d->DrawImage(
+    mBezelEffect.get(), D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
   d2d->SetTransform(D2D1::Matrix3x2F::Identity());
-  d2d->DrawBitmap(
-    bezel, rect, 1.0f, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
 
   const auto [hoverKey, keys] = mHardKeys->GetState();
   const auto pressedKey = mHardKeys->GetPressedButton();

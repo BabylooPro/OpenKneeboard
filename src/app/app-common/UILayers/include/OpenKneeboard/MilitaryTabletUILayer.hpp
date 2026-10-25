@@ -6,6 +6,7 @@
 #include <OpenKneeboard/CursorClickableRegions.hpp>
 #include <OpenKneeboard/DXResources.hpp>
 #include <OpenKneeboard/Events.hpp>
+#include <OpenKneeboard/MilitaryTabletDaylight.hpp>
 #include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/UILayerBase.hpp>
 
@@ -26,7 +27,7 @@ class MilitaryTabletViewportUILayer;
  * rotated to landscape; the bezel is drawn on top. The hardware keys use the
  * native actions (hide, page, tab) or the other tablet layers (zoom, notes,
  * home); the brightness keys dim the screen only. Other cursor events outside
- * of the screen are not forwarded.
+ * of the screen are not forwarded. The bezel is lit by the mission's daylight.
  */
 class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
  public:
@@ -87,6 +88,7 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
   bool CanSwitchTab(bool next) const;
   float GetBrightness() const;
   void ChangeBrightness(float direction);
+  MilitaryTabletDaylight::Light GetBezelLight() const;
 
   ID2D1Bitmap* GetBezelBitmap(bool landscape);
   void LoadBezelBitmaps();
@@ -98,10 +100,12 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
   MilitaryTabletHomeUILayer* mHome {nullptr};
   MilitaryTabletNotesUILayer* mNotes {nullptr};
   MilitaryTabletTheme::Brushes mBrushes;
+  MilitaryTabletDaylight mDaylight;
   std::shared_ptr<CursorClickableRegions<HardKeyRegion>> mHardKeys;
 
   winrt::com_ptr<ID2D1Bitmap1> mPortraitBezel;
   winrt::com_ptr<ID2D1Bitmap1> mLandscapeBezel;
+  winrt::com_ptr<ID2D1Effect> mBezelEffect;
   bool mBezelLoadAttempted {false};
 };
 
