@@ -85,6 +85,7 @@ struct TabPage : TabPageT<TabPage>, EventReceiver {
   std::optional<PixelRect> mTabletPanelRect;
   void EnqueuePointerPoint(const PointerPoint&);
   void EnqueueCursorEvent(const CursorEvent&);
+  OpenKneeboard::fire_and_forget PostTabletCursorEvent(CursorEvent);
   void FlushCursorEvents();
 
   void SetTab(const std::shared_ptr<TabView>&);

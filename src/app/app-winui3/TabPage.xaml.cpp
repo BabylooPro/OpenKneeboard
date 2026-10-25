@@ -856,8 +856,25 @@ void TabPage::EnqueuePointerPoint(const PointerPoint& pp) {
 
 void TabPage::EnqueueCursorEvent(const CursorEvent& ev) {
   std::unique_lock lock(mCursorEventsMutex);
+  if (mTabletPanelRect) {
+    lock.unlock();
+    this->PostTabletCursorEvent(ev);
+    return;
+  }
   mCursorEvents.push(ev);
   mHaveCursorEvents = true;
+}
+
+// Not from the frame tick: it holds a shared lock on the kneeboard state, which
+// the tablet keys and toolbar actions lock exclusively, as for tablet input
+OpenKneeboard::fire_and_forget TabPage::PostTabletCursorEvent(CursorEvent ev) {
+  auto weak = get_weak();
+  co_await mUIThread;
+  const auto self = weak.get();
+  if (!(self && self->mKneeboardView)) {
+    co_return;
+  }
+  self->mKneeboardView->PostCursorEvent(ev);
 }
 
 }// namespace winrt::OpenKneeboardApp::implementation
