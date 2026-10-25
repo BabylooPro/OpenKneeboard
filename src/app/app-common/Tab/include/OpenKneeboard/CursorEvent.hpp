@@ -18,6 +18,8 @@ enum class CursorTouchState {
 enum class CursorSource {
   WindowPointer,
   Tablet,
+  // The app window shows the whole canvas, as the game does
+  WindowCanvasPointer,
 };
 
 struct CursorEvent {

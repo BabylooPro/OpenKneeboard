@@ -329,9 +329,12 @@ void MilitaryTabletUILayer::PostCursorEvent(
     return;
   }
 
-  // Hidden with the power key or a binding: nothing on screen takes clicks
+  // Hidden with the power key or a binding: nothing in game takes clicks, but
+  // the app window still shows the tablet
   const auto renderer = mKneeboard->GetInterprocessRenderer();
-  if (renderer && !renderer->IsVisible()) {
+  if (
+    cursorEvent.mSource == CursorSource::Tablet && renderer
+    && !renderer->IsVisible()) {
     mHardKeys->PostCursorEvent(kneeboardViewID, {});
     first->PostCursorEvent(rest, context, kneeboardViewID, {});
     return;

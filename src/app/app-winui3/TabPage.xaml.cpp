@@ -48,6 +48,8 @@ namespace winrt::OpenKneeboardApp::implementation {
 
 std::unordered_map<TabView::RuntimeID, std::weak_ptr<RenderTarget>>
   TabPage::sRenderTarget;
+// Shared by all tab pages, so that page sources keep one cache for it
+std::weak_ptr<RenderTarget> TabPage::sTabletRenderTarget;
 
 std::shared_ptr<RenderTarget> TabPage::GetRenderTarget(
   const audited_ptr<DXResources>& dxr,
@@ -181,7 +183,7 @@ void TabPage::UpdateKneeboardView() {
     AddEventListener(
       mKneeboardView->evCursorEvent,
       [this](const auto& ev) {
-        if (ev.mSource == CursorSource::WindowPointer) {
+        if (ev.mSource != CursorSource::Tablet) {
           mDrawCursor = false;
         } else {
           mDrawCursor = ev.mTouchState != CursorTouchState::NotNearSurface;
@@ -598,6 +600,15 @@ task<void> TabPage::PaintNow(std::source_location loc) noexcept {
     }
   }
 
+  if (this->CanShowMilitaryTablet()) {
+    co_await this->PaintMilitaryTablet();
+    co_return;
+  }
+  {
+    const std::unique_lock cursorLock(mCursorEventsMutex);
+    mTabletPanelRect.reset();
+  }
+
   auto metrics = GetPageMetrics();
   if (!metrics.mRenderSize) {
     auto ctx = mRenderTarget->d2d();
@@ -659,6 +670,86 @@ task<void> TabPage::PaintNow(std::source_location loc) noexcept {
   // activity.StopWithResult("RenderedWithCursor");
 }
 
+// The layers keep state for the rectangle they were last drawn in, so this
+// must match the game's rectangle for this view: the first one is at the origin
+bool TabPage::CanShowMilitaryTablet() const {
+  if (!mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled) {
+    return false;
+  }
+  const auto guid = mKneeboardView->GetPersistentGUID();
+  const auto views = mKneeboard->GetViewsSettings().mViews;
+  for (const auto& view: views) {
+    if (view.mGuid == guid) {
+      return true;
+    }
+    if (view.mNonVR.mEnabled || view.mVR.mEnabled) {
+      return false;
+    }
+  }
+  return true;
+}
+
+task<void> TabPage::PaintMilitaryTablet() {
+  const auto layoutSize = mKneeboardView->GetIPCRenderLayout().mSize;
+  const auto size = (layoutSize == PixelSize {}) ? ErrorPixelSize : layoutSize;
+  if (size != mTabletSize) {
+    mTabletBitmap = nullptr;
+    mTabletTexture = nullptr;
+    const D3D11_TEXTURE2D_DESC textureDesc {
+      .Width = size.mWidth,
+      .Height = size.mHeight,
+      .MipLevels = 1,
+      .ArraySize = 1,
+      .Format = DXGI_FORMAT_B8G8R8A8_UNORM,
+      .SampleDesc = {1, 0},
+      .Usage = D3D11_USAGE_DEFAULT,
+      .BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET,
+    };
+    winrt::check_hresult(mDXR->mD3D11Device->CreateTexture2D(
+      &textureDesc, nullptr, mTabletTexture.put()));
+    winrt::check_hresult(mDXR->mD2DDeviceContext->CreateBitmapFromDxgiSurface(
+      mTabletTexture.as<IDXGISurface>().get(),
+      D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_NONE,
+        D2D1::PixelFormat(
+          DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+      mTabletBitmap.put()));
+    mTabletSize = size;
+  }
+
+  if (!mTabletRenderTarget) {
+    mTabletRenderTarget = sTabletRenderTarget.lock();
+    if (!mTabletRenderTarget) {
+      mTabletRenderTarget = RenderTarget::Create(mDXR, nullptr);
+      sTabletRenderTarget = mTabletRenderTarget;
+    }
+  }
+  mTabletRenderTarget->SetD3DTexture(mTabletTexture);
+  mTabletRenderTarget->d2d()->Clear({0, 0, 0, 0});
+  co_await mKneeboardView->RenderWithChrome(
+    mTabletRenderTarget.get(), {{0, 0}, size}, true, mDrawCursor);
+
+  const auto fitted = size.StaticCast<float>()
+                        .ScaledToFit(mPanelDimensions.StaticCast<float>())
+                        .Rounded<uint32_t>();
+  const PixelRect panelRect {
+    {
+      (mPanelDimensions.mWidth - fitted.mWidth) / 2,
+      (mPanelDimensions.mHeight - fitted.mHeight) / 2,
+    },
+    fitted,
+  };
+  {
+    const std::unique_lock lock(mCursorEventsMutex);
+    mTabletPanelRect = panelRect;
+  }
+  mRenderTarget->d2d()->DrawBitmap(
+    mTabletBitmap.get(),
+    panelRect,
+    1.0f,
+    D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC);
+}
+
 TabPage::PageMetrics TabPage::GetPageMetrics() {
   OPENKNEEBOARD_ASSERT(
     mTabView, "Attempt to fetch Page Metrics without a TabView");
@@ -711,17 +802,23 @@ void TabPage::EnqueuePointerPoint(const PointerPoint& pp) {
   if (!mTabView) {
     return;
   }
-  const auto metrics = GetPageMetrics();
+  std::optional<PixelRect> tablet;
+  {
+    const std::unique_lock lock(mCursorEventsMutex);
+    tablet = mTabletPanelRect;
+  }
+  // The tablet image is the whole canvas
+  const auto area = tablet ? *tablet : GetPageMetrics().mRenderRect;
   auto x = static_cast<FLOAT>(pp.Position().X);
   auto y = static_cast<FLOAT>(pp.Position().Y);
 
   x *= mCompositionScaleX;
   y *= mCompositionScaleY;
 
-  x -= metrics.mRenderRect.Left();
-  y -= metrics.mRenderRect.Top();
-  x /= metrics.mRenderSize.Width();
-  y /= metrics.mRenderSize.Height();
+  x -= area.Left();
+  y -= area.Top();
+  x /= area.Width();
+  y /= area.Height();
 
   auto ppp = pp.Properties();
 
@@ -733,7 +830,9 @@ void TabPage::EnqueuePointerPoint(const PointerPoint& pp) {
     return;
   }
 
-  const auto canvasPoint = mKneeboardView->GetCursorCanvasPoint({x, y});
+  const auto canvasPoint = tablet
+    ? D2D1_POINT_2F {x, y}
+    : mKneeboardView->GetCursorCanvasPoint({x, y});
 
   uint32_t buttons = 0;
   if (leftClick) {
@@ -744,7 +843,8 @@ void TabPage::EnqueuePointerPoint(const PointerPoint& pp) {
   }
 
   this->EnqueueCursorEvent(CursorEvent {
-    .mSource = CursorSource::WindowPointer,
+    .mSource = tablet ? CursorSource::WindowCanvasPointer
+                      : CursorSource::WindowPointer,
     .mTouchState = (leftClick || rightClick) ? CursorTouchState::TouchingSurface
                                              : CursorTouchState::NearSurface,
     .mX = canvasPoint.x,

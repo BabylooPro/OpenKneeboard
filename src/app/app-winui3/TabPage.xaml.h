@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <vector>
 
@@ -80,6 +81,8 @@ struct TabPage : TabPageT<TabPage>, EventReceiver {
   std::mutex mCursorEventsMutex;
   std::queue<CursorEvent> mCursorEvents;
   bool mHaveCursorEvents {false};
+  // Where the military tablet is drawn, if it is
+  std::optional<PixelRect> mTabletPanelRect;
   void EnqueuePointerPoint(const PointerPoint&);
   void EnqueueCursorEvent(const CursorEvent&);
   void FlushCursorEvents();
@@ -135,6 +138,15 @@ struct TabPage : TabPageT<TabPage>, EventReceiver {
   static std::shared_ptr<RenderTarget> GetRenderTarget(
     const audited_ptr<DXResources>&,
     const TabView::RuntimeID&);
+
+  // With the military tablet theme, the window shows the tablet as in game
+  bool CanShowMilitaryTablet() const;
+  task<void> PaintMilitaryTablet();
+  winrt::com_ptr<ID3D11Texture2D> mTabletTexture;
+  winrt::com_ptr<ID2D1Bitmap1> mTabletBitmap;
+  PixelSize mTabletSize {};
+  std::shared_ptr<RenderTarget> mTabletRenderTarget;
+  static std::weak_ptr<RenderTarget> sTabletRenderTarget;
 
   audited_ptr<OpenKneeboard::DXResources> mDXR;
   std::shared_ptr<OpenKneeboard::KneeboardState> mKneeboard;

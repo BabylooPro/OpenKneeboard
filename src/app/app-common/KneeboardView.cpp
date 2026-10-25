@@ -439,7 +439,8 @@ void KneeboardView::PostCursorEvent(const CursorEvent& ev) {
 task<void> KneeboardView::RenderWithChrome(
   RenderTarget* rt,
   const PixelRect& rect,
-  bool isActiveForInput) noexcept {
+  bool isActiveForInput,
+  bool drawCursor) noexcept {
   OPENKNEEBOARD_TraceLoggingScope(
     "KneeboardView::RenderWithChrome()",
     TraceLoggingHexUInt64(rt->GetID().GetTemporaryValue(), "RenderTargetID"));
@@ -464,7 +465,7 @@ task<void> KneeboardView::RenderWithChrome(
       },
       rect);
   }
-  if (mCursorCanvasPoint) {
+  if (drawCursor && mCursorCanvasPoint) {
     const auto& size = rect.mSize;
     auto d2d = rt->d2d();
     mCursorRenderer->Render(
