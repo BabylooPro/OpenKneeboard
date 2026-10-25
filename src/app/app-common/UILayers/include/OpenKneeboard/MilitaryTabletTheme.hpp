@@ -38,6 +38,7 @@ struct Brushes {
   winrt::com_ptr<ID2D1SolidColorBrush> mPaper;
   winrt::com_ptr<ID2D1SolidColorBrush> mPaperLine;
   winrt::com_ptr<ID2D1SolidColorBrush> mInk;
+  winrt::com_ptr<ID2D1SolidColorBrush> mDimmer;
 
   static Brushes Create(ID2D1DeviceContext* ctx) {
     const auto brush = [ctx](float r, float g, float b, float a = 1.0f) {
@@ -70,6 +71,7 @@ struct Brushes {
       .mPaper = brush(0.93f, 0.92f, 0.87f),
       .mPaperLine = brush(0.80f, 0.80f, 0.74f),
       .mInk = brush(0.08f, 0.10f, 0.15f),
+      .mDimmer = brush(0.0f, 0.0f, 0.0f),
     };
   }
 };

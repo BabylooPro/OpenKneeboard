@@ -92,7 +92,21 @@ InGameActions InGameActions::Create(
   more.push_back(CreateClearNotesItem(kneeboardState, kneeboardView, tabView));
   more.push_back(CreateReloadItem(kneeboardState, kneeboardView, tabView));
 
-  InGameActions ret {
+  if (militaryTablet) {
+    // The bezel keys turn pages and switch tabs
+    return {
+      .mLeft = {
+    std::make_shared<TabNavigationAction>(tabView),
+    std::make_shared<TabFirstPageAction>(tabView),
+      },
+      .mRight = {
+    std::make_shared<ToolbarFlyout>("\ue712", _("More"), more),
+    std::make_shared<ToggleBookmarkAction>(kneeboardState, kneeboardView, tabView),
+    militaryTabletAction(MilitaryTablet::Rotate),
+      },
+    };
+  }
+  return {
       .mLeft = {
     std::make_shared<TabNavigationAction>(tabView),
     std::make_shared<TabFirstPageAction>(tabView),
@@ -106,13 +120,6 @@ InGameActions InGameActions::Create(
     std::make_shared<NextTabAction>(kneeboardState, kneeboardView),
       },
   };
-  if (militaryTablet) {
-    // Right items are laid out from the right edge: this goes between the
-    // bookmark toggle and the tab buttons
-    ret.mRight.insert(
-      ret.mRight.begin() + 2, militaryTabletAction(MilitaryTablet::Rotate));
-  }
-  return ret;
 }
 
 InAppActions InAppActions::Create(

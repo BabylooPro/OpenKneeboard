@@ -38,8 +38,12 @@ constexpr Geometry2D::Rect<float> ScreenRect {
 constexpr float ScreenCornerRadius = 16.0f;
 // Below this alpha, the image has a faint matte around its outline
 constexpr uint8_t HaloMaxAlpha = 16;
-// The sun keys stop short of black; bindings can still go lower
+// The sun keys stop short of black
 constexpr float MinBrightness = 0.1f;
+constexpr float BrightnessStep = 0.1f;
+// The bezel is 2:3, so scaling it in steps of 1/512 gives the canvas the exact
+// same aspect ratio whatever the tab: the game overlay does not shift
+constexpr float ScaleStep = 1.0f / 512;
 
 constexpr Geometry2D::Rect<float> Key(float x, float y, float w, float h) {
   return {{x, y}, {w, h}};
@@ -158,20 +162,18 @@ bool MilitaryTabletUILayer::CanSwitchTab(bool next) const {
   return next ? (index + 1 < count) : (index > 0);
 }
 
-// The native in-game brightness: the tint applied by the game overlay
+// Not the native tint: the game overlay applies it to the bezel too
 float MilitaryTabletUILayer::GetBrightness() const {
-  const auto& tint = mKneeboard->GetUISettings().mTint;
-  return tint.mEnabled ? tint.mBrightness : 1.0f;
+  return mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletBrightness;
 }
 
 void MilitaryTabletUILayer::ChangeBrightness(float direction) {
   auto settings = mKneeboard->GetUISettings();
-  auto& tint = settings.mTint;
-  // Starts from what is shown, even if a dimmer value is stored but disabled
-  const auto brightness = this->GetBrightness();
-  tint.mEnabled = true;
-  tint.mBrightness = std::clamp(
-    brightness + (direction * tint.mBrightnessStep), MinBrightness, 1.0f);
+  auto& brightness = settings.mInGameUI.mMilitaryTabletBrightness;
+  brightness = std::clamp(
+    std::round((brightness / BrightnessStep) + direction) * BrightnessStep,
+    MinBrightness,
+    1.0f);
   fire_and_forget::wrap(&KneeboardState::SetUISettings, mKneeboard, settings);
 }
 
@@ -188,9 +190,7 @@ bool MilitaryTabletUILayer::IsHardKeyEnabled(HardKey key) const {
     case HardKey::BrightnessUp:
       return this->GetBrightness() < 0.999f;
     case HardKey::BrightnessDown:
-      return this->GetBrightness()
-        - mKneeboard->GetUISettings().mTint.mBrightnessStep
-        > MinBrightness - 0.001f;
+      return this->GetBrightness() - BrightnessStep > MinBrightness - 0.001f;
     case HardKey::NextPage:
       return this->CanTurnPage(true);
     case HardKey::PreviousPage:
@@ -331,8 +331,9 @@ MilitaryTabletUILayer::Layout MilitaryTabletUILayer::GetLayout(
   const auto nextSize
     = nextMetrics.mPreferredSize.mPixelSize.StaticCast<float>();
   const auto screen = Oriented(ScreenRect, landscape);
-  const auto scale = std::max(
+  const auto fitScale = std::max(
     nextSize.mWidth / screen.Width(), nextSize.mHeight / screen.Height());
+  const auto scale = std::ceil(fitScale / ScaleStep) * ScaleStep;
   const auto nextArea = screen * scale;
 
   // The next layers stretch to fill the screen; this is where the unzoomed
@@ -417,6 +418,14 @@ task<void> MilitaryTabletUILayer::Render(
   }
 
   co_await first->Render(rc, rest, context, toRenderRect(layout.mNextArea));
+
+  if (const auto brightness = this->GetBrightness(); brightness < 1.0f) {
+    auto d2d = rc.d2d();
+    d2d->SetTransform(D2D1::Matrix3x2F::Identity());
+    mBrushes.mDimmer->SetOpacity(1.0f - brightness);
+    d2d->FillRectangle(
+      toRenderRect(layout.mNextArea), mBrushes.mDimmer.get());
+  }
 
   const auto bezel = this->GetBezelBitmap(landscape);
   if (!bezel) {

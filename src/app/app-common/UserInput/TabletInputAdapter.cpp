@@ -423,6 +423,14 @@ void TabletInputAdapter::OnTabletInput(
 
     // 1. scale to canvas size
     auto canvasSize = view->GetPreferredSize().mPixelSize;
+    // The military tablet canvas has the bezel's aspect ratio, not the tab's:
+    // using the tab's would move the cursor on every tab change
+    if (mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletThemeEnabled) {
+      const auto bezelCanvasSize = view->GetIPCRenderLayout().mSize;
+      if (bezelCanvasSize != PixelSize {}) {
+        canvasSize = bezelCanvasSize;
+      }
+    }
 
     const auto scaleX = canvasSize.mWidth / maxX;
     const auto scaleY = canvasSize.mHeight / maxY;

@@ -24,9 +24,9 @@ class MilitaryTabletViewportUILayer;
  *
  * The next layers fill the screen cut-out of the bezel image, which can be
  * rotated to landscape; the bezel is drawn on top. The hardware keys use the
- * native actions (hide, page, tab, brightness) or the other tablet layers
- * (zoom, notes, home); other cursor events outside of the screen are not
- * forwarded.
+ * native actions (hide, page, tab) or the other tablet layers (zoom, notes,
+ * home); the brightness keys dim the screen only. Other cursor events outside
+ * of the screen are not forwarded.
  */
 class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
  public:

@@ -17,7 +17,8 @@ OPENKNEEBOARD_DEFINE_SPARSE_JSON(
   mFooterFrameCountEnabled,
   mBookmarksBarEnabled,
   mMilitaryTabletThemeEnabled,
-  mMilitaryTabletLandscape);
+  mMilitaryTabletLandscape,
+  mMilitaryTabletBrightness);
 
 OPENKNEEBOARD_DEFINE_SPARSE_JSON(
   TintSettings,
