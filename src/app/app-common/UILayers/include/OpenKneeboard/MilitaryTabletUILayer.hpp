@@ -16,21 +16,27 @@
 namespace OpenKneeboard {
 
 class KneeboardState;
+class MilitaryTabletHomeUILayer;
+class MilitaryTabletNotesUILayer;
 class MilitaryTabletViewportUILayer;
 
 /** Draws a rugged tablet bezel around every other layer.
  *
  * The next layers fill the screen cut-out of the bezel image, which can be
- * rotated to landscape; the bezel is drawn on top. The hardware keys hide the
- * kneeboard or zoom the content, and other cursor events outside of the screen
- * are not forwarded.
+ * rotated to landscape; the bezel is drawn on top. The hardware keys use the
+ * native actions (hide, page, tab, brightness) or the other tablet layers
+ * (zoom, notes, home); other cursor events outside of the screen are not
+ * forwarded.
  */
 class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
  public:
   MilitaryTabletUILayer(
     const audited_ptr<DXResources>& dxr,
     KneeboardState*,
-    MilitaryTabletViewportUILayer*);
+    KneeboardView*,
+    MilitaryTabletViewportUILayer*,
+    MilitaryTabletHomeUILayer*,
+    MilitaryTabletNotesUILayer*);
   virtual ~MilitaryTabletUILayer();
 
   virtual void PostCursorEvent(
@@ -50,6 +56,14 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
     Power,
     ZoomIn,
     ZoomOut,
+    BrightnessUp,
+    BrightnessDown,
+    NextPage,
+    PreviousPage,
+    PreviousTab,
+    NextTab,
+    Notes,
+    Home,
   };
   struct HardKeyRegion {
     Geometry2D::Rect<float> mRect {};
@@ -66,14 +80,23 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
   Layout GetLayout(const Metrics& nextMetrics) const;
   bool IsLandscape() const;
   bool IsHardKeyEnabled(HardKey) const;
+  bool IsHardKeyActive(HardKey) const;
   void OnHardKeyClicked(const HardKeyRegion&);
+  bool IsAppOpen() const;
+  bool CanTurnPage(bool next) const;
+  bool CanSwitchTab(bool next) const;
+  float GetBrightness() const;
+  void ChangeBrightness(float direction);
 
   ID2D1Bitmap* GetBezelBitmap(bool landscape);
   void LoadBezelBitmaps();
 
   audited_ptr<DXResources> mDXResources;
   KneeboardState* mKneeboard {nullptr};
+  KneeboardView* mKneeboardView {nullptr};
   MilitaryTabletViewportUILayer* mViewport {nullptr};
+  MilitaryTabletHomeUILayer* mHome {nullptr};
+  MilitaryTabletNotesUILayer* mNotes {nullptr};
   MilitaryTabletTheme::Brushes mBrushes;
   std::shared_ptr<CursorClickableRegions<HardKeyRegion>> mHardKeys;
 

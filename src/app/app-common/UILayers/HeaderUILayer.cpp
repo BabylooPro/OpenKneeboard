@@ -446,6 +446,14 @@ void HeaderUILayer::LayoutToolbar(
       headerRect.Height(),
     },
   };
+  // The tablet has more buttons on the right; centering the title on the
+  // whole bar would leave it only the space of the narrower side
+  if (this->IsMilitaryTabletThemeEnabled() && secondaryRight > primaryLeft) {
+    *headerTextRect = {
+      headerRect.mOffset + PixelPoint {primaryLeft, 0},
+      {secondaryRight - primaryLeft, headerRect.Height()},
+    };
+  }
 
   if (headerTextRect->Left() > headerTextRect->Right()) {
     *headerTextRect = {};
@@ -504,12 +512,35 @@ void HeaderUILayer::DrawHeaderText(
   headerLayout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
   headerLayout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
+  const bool militaryTablet = this->IsMilitaryTabletThemeEnabled();
+  if (militaryTablet) {
+    // One line; a long title is first shrunk a little, then ellipsized
+    headerLayout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    winrt::com_ptr<IDWriteTextLayout> naturalLayout;
+    winrt::check_hresult(dwf->CreateTextLayout(
+      title.data(),
+      static_cast<UINT32>(title.size()),
+      headerFormat.get(),
+      100000.0f,
+      textSize.Height<float>(),
+      naturalLayout.put()));
+    naturalLayout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    DWRITE_TEXT_METRICS metrics {};
+    naturalLayout->GetMetrics(&metrics);
+    if (metrics.width > textSize.Width<float>()) {
+      const auto fit
+        = std::max(0.75f, textSize.Width<float>() / metrics.width);
+      headerLayout->SetFontSize(
+        headerFormat->GetFontSize() * fit,
+        {0, static_cast<UINT32>(title.size())});
+    }
+  }
+
   ctx->DrawTextLayout(
     textRect.TopLeft(),
     headerLayout.get(),
-    this->IsMilitaryTabletThemeEnabled()
-      ? mMilitaryTabletBrushes.mForeground.get()
-      : mHeaderTextBrush.get());
+    militaryTablet ? mMilitaryTabletBrushes.mForeground.get()
+                   : mHeaderTextBrush.get());
 }
 
 void HeaderUILayer::DrawMilitaryTabletButton(
@@ -525,30 +556,18 @@ void HeaderUILayer::DrawMilitaryTabletButton(
   const bool enabled = action->IsEnabled();
   const bool active = enabled && toggle && toggle->IsActive();
 
-  const auto& brushes = mMilitaryTabletBrushes;
-  ID2D1Brush* face = brushes.mFace.get();
-  ID2D1Brush* foreground = brushes.mForeground.get();
-  if (!enabled) {
-    foreground = brushes.mDisabled.get();
-  } else if (pressed) {
-    face = brushes.mFacePressed.get();
-  } else if (hover) {
-    face = brushes.mFaceHover.get();
-    foreground = brushes.mAccent.get();
-  } else if (active) {
-    foreground = brushes.mActive.get();
-  }
-
-  const auto radius = (rect.bottom - rect.top) / 5;
-  const auto roundedRect = D2D1::RoundedRect(rect, radius, radius);
-  d2d->FillRoundedRectangle(roundedRect, face);
-  d2d->DrawRoundedRectangle(
-    roundedRect,
-    active ? brushes.mActive.get() : brushes.mEdge.get(),
-    strokeWidth / 2);
-
   const auto glyph = winrt::to_hstring(action->GetGlyph());
-  d2d->DrawTextW(glyph.c_str(), glyph.size(), glyphFormat, rect, foreground);
+  MilitaryTabletTheme::DrawButton(
+    d2d,
+    mMilitaryTabletBrushes,
+    rect,
+    glyph,
+    glyphFormat,
+    strokeWidth,
+    enabled,
+    hover,
+    pressed,
+    active);
 }
 
 bool HeaderUILayer::Button::operator==(const Button& other) const noexcept {

@@ -5,6 +5,7 @@
 
 #include <OpenKneeboard/DXResources.hpp>
 #include <OpenKneeboard/Events.hpp>
+#include <OpenKneeboard/ITab.hpp>
 #include <OpenKneeboard/MilitaryTabletTheme.hpp>
 #include <OpenKneeboard/UILayerBase.hpp>
 
@@ -14,17 +15,20 @@
 
 #include <memory>
 #include <optional>
+#include <unordered_map>
 
 namespace OpenKneeboard {
 
 class KneeboardView;
 class RenderTarget;
 
-/** Fits, zooms and scrolls the tab content inside the military tablet screen.
+/** Fits, zooms, rotates and scrolls the tab content inside the military
+ * tablet screen.
  *
  * The next layer is always rendered at the size it is displayed at; when that
- * does not fit, it is rendered to an offscreen texture and only the visible
- * part is copied, with scroll bars on the right and bottom edges.
+ * does not fit or the document is rotated, it is rendered to an offscreen
+ * texture and only the visible part is copied, with scroll bars on the right
+ * and bottom edges. Each tab keeps its own zoom and rotation.
  */
 class MilitaryTabletViewportUILayer final : public UILayerBase,
                                             private EventReceiver {
@@ -60,6 +64,7 @@ class MilitaryTabletViewportUILayer final : public UILayerBase,
   void ZoomIn();
   void ZoomOut();
   void ResetZoom();
+  void RotateDocument();
 
   Event<> evStateChangedEvent;
 
@@ -67,6 +72,16 @@ class MilitaryTabletViewportUILayer final : public UILayerBase,
   using FloatPoint = Geometry2D::Point<float>;
   using FloatSize = Geometry2D::Size<float>;
   using FloatRect = Geometry2D::Rect<float>;
+
+  struct TabState {
+    Fit mFit {Fit::Page};
+    std::size_t mZoomIndex {0};
+    FloatPoint mCenter {0.5f, 0.0f};
+    uint8_t mQuarterTurns {0};
+  };
+  void OnTabChanged();
+  PixelSize Rotated(const PixelSize&) const;
+  FloatPoint Unrotated(const FloatPoint&) const;
 
   enum class Target {
     None,
@@ -95,11 +110,16 @@ class MilitaryTabletViewportUILayer final : public UILayerBase,
   void ResizeOffscreen(const PixelSize&);
 
   audited_ptr<DXResources> mDXResources;
+  KneeboardView* mKneeboardView {nullptr};
   MilitaryTabletTheme::Brushes mBrushes;
 
   Fit mFit {Fit::Page};
   std::size_t mZoomIndex {0};
   FloatPoint mCenter {0.5f, 0.0f};
+  uint8_t mQuarterTurns {0};
+
+  std::optional<ITab::RuntimeID> mTabID;
+  std::unordered_map<ITab::RuntimeID, TabState> mTabStates;
 
   std::optional<PixelSize> mViewportSize;
   std::optional<PixelSize> mContentSize;
@@ -114,6 +134,7 @@ class MilitaryTabletViewportUILayer final : public UILayerBase,
   std::shared_ptr<RenderTarget> mOffscreen;
   winrt::com_ptr<ID3D11Texture2D> mOffscreenTexture;
   winrt::com_ptr<ID3D11ShaderResourceView> mOffscreenSRV;
+  winrt::com_ptr<ID2D1Bitmap1> mOffscreenBitmap;
   PixelSize mOffscreenSize {};
 };
 

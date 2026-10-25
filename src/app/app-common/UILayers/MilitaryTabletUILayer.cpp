@@ -5,8 +5,13 @@
 #include <OpenKneeboard/Filesystem.hpp>
 #include <OpenKneeboard/InterprocessRenderer.hpp>
 #include <OpenKneeboard/KneeboardState.hpp>
+#include <OpenKneeboard/KneeboardView.hpp>
+#include <OpenKneeboard/MilitaryTabletHomeUILayer.hpp>
+#include <OpenKneeboard/MilitaryTabletNotesUILayer.hpp>
 #include <OpenKneeboard/MilitaryTabletUILayer.hpp>
 #include <OpenKneeboard/MilitaryTabletViewportUILayer.hpp>
+#include <OpenKneeboard/TabView.hpp>
+#include <OpenKneeboard/TabsList.hpp>
 #include <OpenKneeboard/UserAction.hpp>
 
 #include <OpenKneeboard/dprint.hpp>
@@ -14,6 +19,7 @@
 #include <OpenKneeboard/tracing.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -24,25 +30,20 @@ constexpr auto BezelFileName = "military-tablet-bezel.png";
 
 // Pixel geometry of the portrait bezel image; the screen is the dark glass
 // inside the inner rim, rounded corners included
-constexpr Geometry2D::Size<float> BezelSize {992.0f, 1586.0f};
+constexpr Geometry2D::Size<float> BezelSize {1024.0f, 1536.0f};
 constexpr Geometry2D::Rect<float> ScreenRect {
-  {127.0f, 171.0f},
-  {737.0f, 1222.0f},
+  {156.0f, 170.0f},
+  {713.0f, 1171.0f},
 };
-// Premultiplied channel value at or below which a screen pixel is glass
-constexpr uint8_t GlassMaxChannel = 16;
-constexpr Geometry2D::Rect<float> PowerKeyRect {
-  {915.0f, 301.0f},
-  {49.0f, 87.0f},
-};
-constexpr Geometry2D::Rect<float> ZoomInKeyRect {
-  {911.0f, 477.0f},
-  {47.0f, 80.0f},
-};
-constexpr Geometry2D::Rect<float> ZoomOutKeyRect {
-  {911.0f, 558.0f},
-  {47.0f, 78.0f},
-};
+constexpr float ScreenCornerRadius = 16.0f;
+// Below this alpha, the image has a faint matte around its outline
+constexpr uint8_t HaloMaxAlpha = 16;
+// The sun keys stop short of black; bindings can still go lower
+constexpr float MinBrightness = 0.1f;
+
+constexpr Geometry2D::Rect<float> Key(float x, float y, float w, float h) {
+  return {{x, y}, {w, h}};
+}
 
 // Landscape is the portrait image rotated 90 degrees counter-clockwise, which
 // puts the hardware keys on the top edge
@@ -71,16 +72,31 @@ constexpr Geometry2D::Rect<float> Oriented(
 MilitaryTabletUILayer::MilitaryTabletUILayer(
   const audited_ptr<DXResources>& dxr,
   KneeboardState* kneeboard,
-  MilitaryTabletViewportUILayer* viewport)
+  KneeboardView* kneeboardView,
+  MilitaryTabletViewportUILayer* viewport,
+  MilitaryTabletHomeUILayer* home,
+  MilitaryTabletNotesUILayer* notes)
   : mDXResources(dxr),
     mKneeboard(kneeboard),
+    mKneeboardView(kneeboardView),
     mViewport(viewport),
+    mHome(home),
+    mNotes(notes),
     mBrushes(
       MilitaryTabletTheme::Brushes::Create(dxr->mD2DDeviceContext.get())) {
+  // Measured on the portrait image
   mHardKeys = CursorClickableRegions<HardKeyRegion>::Create({
-    {PowerKeyRect, HardKey::Power},
-    {ZoomInKeyRect, HardKey::ZoomIn},
-    {ZoomOutKeyRect, HardKey::ZoomOut},
+    {Key(62, 316, 53, 89), HardKey::NextPage},
+    {Key(62, 405, 53, 86), HardKey::PreviousPage},
+    {Key(62, 614, 53, 84), HardKey::PreviousTab},
+    {Key(62, 698, 53, 89), HardKey::NextTab},
+    {Key(62, 920, 53, 107), HardKey::Notes},
+    {Key(918, 306, 55, 78), HardKey::Power},
+    {Key(918, 469, 55, 81), HardKey::ZoomIn},
+    {Key(918, 550, 55, 80), HardKey::ZoomOut},
+    {Key(918, 842, 55, 104), HardKey::BrightnessUp},
+    {Key(918, 946, 55, 98), HardKey::BrightnessDown},
+    {Key(451, 1388, 122, 63), HardKey::Home},
   });
   AddEventListener(
     mHardKeys->evClicked,
@@ -102,19 +118,100 @@ bool MilitaryTabletUILayer::IsLandscape() const {
   return mKneeboard->GetUISettings().mInGameUI.mMilitaryTabletLandscape;
 }
 
+bool MilitaryTabletUILayer::IsAppOpen() const {
+  return mHome->IsOpen() || mNotes->IsOpen();
+}
+
+bool MilitaryTabletUILayer::CanTurnPage(bool next) const {
+  if (mNotes->IsOpen()) {
+    return next ? mNotes->CanGoToNextPage() : mNotes->CanGoToPreviousPage();
+  }
+  if (mHome->IsOpen()) {
+    return false;
+  }
+  // Same rules as the header page buttons
+  const auto tabView = mKneeboardView->GetCurrentTabView();
+  if (!tabView) {
+    return false;
+  }
+  const auto pages = tabView->GetPageIDs();
+  if (pages.size() < 2) {
+    return false;
+  }
+  if (mKneeboard->GetUISettings().mLoopPages) {
+    return true;
+  }
+  return tabView->GetPageID() != (next ? pages.back() : pages.front());
+}
+
+bool MilitaryTabletUILayer::CanSwitchTab(bool next) const {
+  // Same rules as the header tab buttons
+  const auto tabs = mKneeboard->GetTabsList();
+  const auto count = tabs ? tabs->GetTabs().size() : 0;
+  if (count < 2) {
+    return false;
+  }
+  if (mKneeboard->GetUISettings().mLoopTabs) {
+    return true;
+  }
+  const auto index = mKneeboardView->GetTabIndex();
+  return next ? (index + 1 < count) : (index > 0);
+}
+
+// The native in-game brightness: the tint applied by the game overlay
+float MilitaryTabletUILayer::GetBrightness() const {
+  const auto& tint = mKneeboard->GetUISettings().mTint;
+  return tint.mEnabled ? tint.mBrightness : 1.0f;
+}
+
+void MilitaryTabletUILayer::ChangeBrightness(float direction) {
+  auto settings = mKneeboard->GetUISettings();
+  auto& tint = settings.mTint;
+  // Starts from what is shown, even if a dimmer value is stored but disabled
+  const auto brightness = this->GetBrightness();
+  tint.mEnabled = true;
+  tint.mBrightness = std::clamp(
+    brightness + (direction * tint.mBrightnessStep), MinBrightness, 1.0f);
+  fire_and_forget::wrap(&KneeboardState::SetUISettings, mKneeboard, settings);
+}
+
 bool MilitaryTabletUILayer::IsHardKeyEnabled(HardKey key) const {
   switch (key) {
     case HardKey::Power:
+    case HardKey::Notes:
+    case HardKey::Home:
       return true;
     case HardKey::ZoomIn:
-      return mViewport->CanZoomIn();
+      return !this->IsAppOpen() && mViewport->CanZoomIn();
     case HardKey::ZoomOut:
-      return mViewport->CanZoomOut();
+      return !this->IsAppOpen() && mViewport->CanZoomOut();
+    case HardKey::BrightnessUp:
+      return this->GetBrightness() < 0.999f;
+    case HardKey::BrightnessDown:
+      return this->GetBrightness()
+        - mKneeboard->GetUISettings().mTint.mBrightnessStep
+        > MinBrightness - 0.001f;
+    case HardKey::NextPage:
+      return this->CanTurnPage(true);
+    case HardKey::PreviousPage:
+      return this->CanTurnPage(false);
+    case HardKey::NextTab:
+      return this->CanSwitchTab(true);
+    case HardKey::PreviousTab:
+      return this->CanSwitchTab(false);
   }
   return false;
 }
 
+bool MilitaryTabletUILayer::IsHardKeyActive(HardKey key) const {
+  return (key == HardKey::Home && mHome->IsOpen())
+    || (key == HardKey::Notes && mNotes->IsOpen());
+}
+
 void MilitaryTabletUILayer::OnHardKeyClicked(const HardKeyRegion& region) {
+  if (!this->IsHardKeyEnabled(region.mKey)) {
+    return;
+  }
   switch (region.mKey) {
     case HardKey::Power:
       fire_and_forget::wrap(
@@ -126,6 +223,44 @@ void MilitaryTabletUILayer::OnHardKeyClicked(const HardKeyRegion& region) {
     case HardKey::ZoomOut:
       mViewport->ZoomOut();
       return;
+    case HardKey::BrightnessUp:
+      this->ChangeBrightness(1.0f);
+      return;
+    case HardKey::BrightnessDown:
+      this->ChangeBrightness(-1.0f);
+      return;
+    case HardKey::NextPage:
+    case HardKey::PreviousPage: {
+      const bool next = (region.mKey == HardKey::NextPage);
+      if (mNotes->IsOpen()) {
+        next ? mNotes->NextPage() : mNotes->PreviousPage();
+        return;
+      }
+      fire_and_forget::wrap(
+        &KneeboardView::PostUserAction,
+        mKneeboardView,
+        next ? UserAction::NEXT_PAGE : UserAction::PREVIOUS_PAGE);
+      return;
+    }
+    // Switching tabs also closes the home screen and the notes
+    case HardKey::NextTab:
+      mKneeboardView->NextTab();
+      return;
+    case HardKey::PreviousTab:
+      mKneeboardView->PreviousTab();
+      return;
+    case HardKey::Notes: {
+      const bool open = !mNotes->IsOpen();
+      mHome->SetOpen(false);
+      mNotes->SetOpen(open);
+      return;
+    }
+    case HardKey::Home: {
+      const bool open = !mHome->IsOpen();
+      mNotes->SetOpen(false);
+      mHome->SetOpen(open);
+      return;
+    }
   }
 }
 
@@ -301,7 +436,7 @@ task<void> MilitaryTabletUILayer::Render(
     ID2D1Brush* brush = nullptr;
     if (!this->IsHardKeyEnabled(key.mKey)) {
       brush = mBrushes.mHardKeyDisabled.get();
-    } else if (pressedKey == key) {
+    } else if (pressedKey == key || this->IsHardKeyActive(key.mKey)) {
       brush = mBrushes.mHardKeyPressed.get();
     } else if (hoverKey == key) {
       brush = mBrushes.mHardKeyHover.get();
@@ -382,22 +517,43 @@ void MilitaryTabletUILayer::LoadBezelBitmaps() {
     return;
   }
 
-  // The case itself is slightly translucent in the image, so the game would
-  // show through it; make it opaque as if drawn over black, keeping only the
-  // soft outer edge. The dark glass is cleared instead, so the header, footer
-  // and content can reach the inner rim, which stays on top of them.
-  const auto screen = ScreenRect.Rounded<UINT>();
+  // The dark glass is cleared, so the header, footer and content can reach the
+  // inner rim, which stays on top of them; the rounded corners are
+  // antialiased. The case itself is slightly translucent in the image, so the
+  // game would show through it: make it opaque as if drawn over black, keeping
+  // the soft outer edge but not the faint matte around it.
+  const auto glassCoverage = [](float x, float y) {
+    const auto& screen = ScreenRect;
+    if (
+      x <= screen.Left() || x >= screen.Right() || y <= screen.Top()
+      || y >= screen.Bottom()) {
+      return 0.0f;
+    }
+    const auto cornerX = std::clamp(
+      x,
+      screen.Left() + ScreenCornerRadius,
+      screen.Right() - ScreenCornerRadius);
+    const auto cornerY = std::clamp(
+      y,
+      screen.Top() + ScreenCornerRadius,
+      screen.Bottom() - ScreenCornerRadius);
+    const auto distance = std::hypot(x - cornerX, y - cornerY);
+    return std::clamp(ScreenCornerRadius - distance + 0.5f, 0.0f, 1.0f);
+  };
   for (UINT y = 0; y < height; ++y) {
     for (UINT x = 0; x < width; ++x) {
       const auto pixel = &portrait[((y * width) + x) * 4];
-      const bool inScreen = x >= screen.Left() && x < screen.Right()
-        && y >= screen.Top() && y < screen.Bottom();
-      if (
-        inScreen
-        && std::max({pixel[0], pixel[1], pixel[2]}) <= GlassMaxChannel) {
-        std::memset(pixel, 0, 4);
+      const auto glass = glassCoverage(
+        static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f);
+      if (glass > 0) {
+        for (int channel = 0; channel < 4; ++channel) {
+          pixel[channel]
+            = static_cast<uint8_t>(pixel[channel] * (1.0f - glass));
+        }
       } else if (pixel[3] >= 128) {
         pixel[3] = 255;
+      } else if (pixel[3] < HaloMaxAlpha) {
+        std::memset(pixel, 0, 4);
       }
     }
   }

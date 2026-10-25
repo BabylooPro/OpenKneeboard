@@ -12,6 +12,8 @@
 #include <OpenKneeboard/ITab.hpp>
 #include <OpenKneeboard/KneeboardState.hpp>
 #include <OpenKneeboard/KneeboardView.hpp>
+#include <OpenKneeboard/MilitaryTabletHomeUILayer.hpp>
+#include <OpenKneeboard/MilitaryTabletNotesUILayer.hpp>
 #include <OpenKneeboard/MilitaryTabletUILayer.hpp>
 #include <OpenKneeboard/MilitaryTabletViewportUILayer.hpp>
 #include <OpenKneeboard/PluginTab.hpp>
@@ -48,8 +50,17 @@ KneeboardView::KneeboardView(
   mTabViewUILayer = std::make_unique<TabViewUILayer>(dxr);
   mMilitaryTabletViewportUILayer
     = std::make_unique<MilitaryTabletViewportUILayer>(dxr, this);
+  mMilitaryTabletHomeUILayer
+    = std::make_unique<MilitaryTabletHomeUILayer>(dxr, kneeboard, this);
+  mMilitaryTabletNotesUILayer
+    = std::make_unique<MilitaryTabletNotesUILayer>(dxr, this);
   mMilitaryTabletUILayer = std::make_unique<MilitaryTabletUILayer>(
-    dxr, kneeboard, mMilitaryTabletViewportUILayer.get());
+    dxr,
+    kneeboard,
+    this,
+    mMilitaryTabletViewportUILayer.get(),
+    mMilitaryTabletHomeUILayer.get(),
+    mMilitaryTabletNotesUILayer.get());
 
   this->UpdateUILayers();
 
@@ -58,7 +69,10 @@ KneeboardView::KneeboardView(
   }
   // The theme layers may only be added to the stack by a later settings change
   for (IUILayer* layer: std::initializer_list<IUILayer*> {
-         mMilitaryTabletUILayer.get(), mMilitaryTabletViewportUILayer.get()}) {
+         mMilitaryTabletUILayer.get(),
+         mMilitaryTabletHomeUILayer.get(),
+         mMilitaryTabletNotesUILayer.get(),
+         mMilitaryTabletViewportUILayer.get()}) {
     if (std::ranges::find(mUILayers, layer) == mUILayers.end()) {
       AddEventListener(layer->evNeedsRepaintEvent, this->evNeedsRepaintEvent);
     }
@@ -93,6 +107,8 @@ void KneeboardView::UpdateUILayers() {
   const auto settings = mKneeboard->GetUISettings().mInGameUI;
   if (settings.mMilitaryTabletThemeEnabled) {
     layers.push_back(mMilitaryTabletUILayer.get());
+    layers.push_back(mMilitaryTabletHomeUILayer.get());
+    layers.push_back(mMilitaryTabletNotesUILayer.get());
   }
   if (settings.mBookmarksBarEnabled) {
     layers.push_back(mBookmarksUILayer.get());

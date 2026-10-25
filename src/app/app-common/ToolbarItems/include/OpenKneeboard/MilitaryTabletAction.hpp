@@ -22,6 +22,7 @@ class MilitaryTabletAction final : public ToolbarAction, private EventReceiver {
     FitToPage,
     FitToWidth,
     ResetZoom,
+    RotateDocument,
   };
 
   MilitaryTabletAction() = delete;

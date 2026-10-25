@@ -35,16 +35,89 @@ MilitaryTabletViewportUILayer::MilitaryTabletViewportUILayer(
   const audited_ptr<DXResources>& dxr,
   KneeboardView* kneeboardView)
   : mDXResources(dxr),
+    mKneeboardView(kneeboardView),
     mBrushes(
       MilitaryTabletTheme::Brushes::Create(dxr->mD2DDeviceContext.get())) {
-  AddEventListener(kneeboardView->evCurrentTabChangedEvent, [this](auto) {
-    mPageID.reset();
-    this->SetZoom(0, mFit, {0.5f, 0.0f});
-  });
+  AddEventListener(
+    kneeboardView->evCurrentTabChangedEvent, [this](auto) {
+      this->OnTabChanged();
+    });
 }
 
 MilitaryTabletViewportUILayer::~MilitaryTabletViewportUILayer() {
   this->RemoveAllEventListeners();
+}
+
+void MilitaryTabletViewportUILayer::OnTabChanged() {
+  if (mTabID) {
+    mTabStates[*mTabID] = {mFit, mZoomIndex, mCenter, mQuarterTurns};
+  }
+  mPageID.reset();
+
+  const auto tabView = mKneeboardView->GetCurrentTabView();
+  const auto tab = tabView ? tabView->GetRootTab().lock() : nullptr;
+  mTabID.reset();
+  if (tab) {
+    mTabID = tab->GetRuntimeID();
+  }
+
+  // A tab shown for the first time keeps the fit mode in use
+  TabState state {.mFit = mFit};
+  if (mTabID) {
+    if (const auto it = mTabStates.find(*mTabID); it != mTabStates.end()) {
+      state = it->second;
+    }
+  }
+  mFit = state.mFit;
+  mZoomIndex = state.mZoomIndex;
+  mCenter = state.mCenter;
+  mQuarterTurns = state.mQuarterTurns;
+  evNeedsRepaintEvent.Emit();
+  evStateChangedEvent.Emit();
+}
+
+PixelSize MilitaryTabletViewportUILayer::Rotated(const PixelSize& size) const {
+  if (mQuarterTurns % 2) {
+    return {size.mHeight, size.mWidth};
+  }
+  return size;
+}
+
+// Maps a normalized point of the rotated document back to the document
+MilitaryTabletViewportUILayer::FloatPoint
+MilitaryTabletViewportUILayer::Unrotated(const FloatPoint& point) const {
+  switch (mQuarterTurns) {
+    case 1:
+      return {point.mY, 1.0f - point.mX};
+    case 2:
+      return {1.0f - point.mX, 1.0f - point.mY};
+    case 3:
+      return {1.0f - point.mY, point.mX};
+    default:
+      return point;
+  }
+}
+
+void MilitaryTabletViewportUILayer::RotateDocument() {
+  // Clockwise; the visible center stays on the same part of the document
+  const auto center = this->Unrotated(this->GetVisibleCenter());
+  mQuarterTurns = (mQuarterTurns + 1) % 4;
+  switch (mQuarterTurns) {
+    case 1:
+      mCenter = {1.0f - center.mY, center.mX};
+      break;
+    case 2:
+      mCenter = {1.0f - center.mX, 1.0f - center.mY};
+      break;
+    case 3:
+      mCenter = {center.mY, 1.0f - center.mX};
+      break;
+    default:
+      mCenter = center;
+      break;
+  }
+  evNeedsRepaintEvent.Emit();
+  evStateChangedEvent.Emit();
 }
 
 MilitaryTabletViewportUILayer::Fit MilitaryTabletViewportUILayer::GetFit()
@@ -119,7 +192,8 @@ MilitaryTabletViewportUILayer::GetVisibleCenter() const {
   if (!(mViewportSize && mContentSize)) {
     return mCenter;
   }
-  const auto layout = this->GetLayout(*mViewportSize, *mContentSize);
+  const auto layout
+    = this->GetLayout(*mViewportSize, this->Rotated(*mContentSize));
   return {
     (layout.mOffset.mX + (layout.mDestination.Width() / 2))
       / layout.mContentSize.mWidth,
@@ -240,7 +314,8 @@ void MilitaryTabletViewportUILayer::PostCursorEvent(
     return;
   }
 
-  const auto layout = this->GetLayout(*mViewportSize, *mContentSize);
+  const auto layout
+    = this->GetLayout(*mViewportSize, this->Rotated(*mContentSize));
   const FloatPoint point {
     cursorEvent.mX * mViewportSize->mWidth,
     cursorEvent.mY * mViewportSize->mHeight,
@@ -254,9 +329,13 @@ void MilitaryTabletViewportUILayer::PostCursorEvent(
       first->PostCursorEvent(rest, context, kneeboardViewID, {});
       return;
     }
+    const auto contentPoint = this->Unrotated({
+      (layout.mOffset.mX + x) / layout.mContentSize.mWidth,
+      (layout.mOffset.mY + y) / layout.mContentSize.mHeight,
+    });
     CursorEvent contentEvent {cursorEvent};
-    contentEvent.mX = (layout.mOffset.mX + x) / layout.mContentSize.mWidth;
-    contentEvent.mY = (layout.mOffset.mY + y) / layout.mContentSize.mHeight;
+    contentEvent.mX = contentPoint.mX;
+    contentEvent.mY = contentPoint.mY;
     first->PostCursorEvent(rest, context, kneeboardViewID, contentEvent);
   };
 
@@ -350,6 +429,7 @@ void MilitaryTabletViewportUILayer::ResizeOffscreen(const PixelSize& size) {
     return;
   }
 
+  mOffscreenBitmap = nullptr;
   mOffscreenSRV = nullptr;
   mOffscreenTexture = nullptr;
   D3D11_TEXTURE2D_DESC textureDesc {
@@ -391,18 +471,23 @@ task<void> MilitaryTabletViewportUILayer::Render(
       mCenter.mY = 0.0f;
     }
     mPageID = pageID;
+    if (!mTabID) {
+      if (const auto tab = context.mTabView->GetRootTab().lock()) {
+        mTabID = tab->GetRuntimeID();
+      }
+    }
   }
   mViewportSize = rect.mSize;
   mContentSize = content;
 
-  const auto layout = this->GetLayout(rect.mSize, content);
+  const auto layout = this->GetLayout(rect.mSize, this->Rotated(content));
   const auto origin = rect.mOffset.StaticCast<float>();
   const auto destination = FloatRect {
     origin + layout.mDestination.mOffset,
     layout.mDestination.mSize,
   }.Rounded<uint32_t>();
 
-  if (!(layout.mScrollX || layout.mScrollY)) {
+  if (!(layout.mScrollX || layout.mScrollY || mQuarterTurns)) {
     co_await first->Render(rc, rest, context, destination);
     co_return;
   }
@@ -412,8 +497,12 @@ task<void> MilitaryTabletViewportUILayer::Render(
     MaxOffscreenSize / layout.mContentSize.mWidth,
     MaxOffscreenSize / layout.mContentSize.mHeight,
   });
-  const auto textureSize
-    = (layout.mContentSize * textureScale).Rounded<uint32_t>();
+  const auto rotatedTextureSize = layout.mContentSize * textureScale;
+  const auto textureSize = ((mQuarterTurns % 2)
+                              ? FloatSize {rotatedTextureSize.mHeight,
+                                           rotatedTextureSize.mWidth}
+                              : rotatedTextureSize)
+                             .Rounded<uint32_t>();
   this->ResizeOffscreen(textureSize);
   {
     auto d3d = mOffscreen->d3d();
@@ -426,11 +515,11 @@ task<void> MilitaryTabletViewportUILayer::Render(
   co_await first->Render(
     offscreenContext, rest, context, PixelRect {{0, 0}, textureSize});
 
-  const auto source = FloatRect {
-    layout.mOffset * textureScale,
-    layout.mDestination.mSize * textureScale,
-  }.Rounded<uint32_t>().Clamped(textureSize);
-  {
+  if (mQuarterTurns == 0) {
+    const auto source = FloatRect {
+      layout.mOffset * textureScale,
+      layout.mDestination.mSize * textureScale,
+    }.Rounded<uint32_t>().Clamped(textureSize);
     auto d3d = rc.d3d();
     auto sb = mDXResources->mSpriteBatch.get();
     sb->Begin(d3d.rtv(), rc.GetRenderTarget()->GetDimensions());
@@ -439,6 +528,50 @@ task<void> MilitaryTabletViewportUILayer::Render(
   }
 
   auto d2d = rc.d2d();
+  if (mQuarterTurns != 0) {
+    if (!mOffscreenBitmap) {
+      winrt::check_hresult(
+        mDXResources->mD2DDeviceContext->CreateBitmapFromDxgiSurface(
+          mOffscreenTexture.as<IDXGISurface>().get(),
+          D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_NONE,
+            D2D1::PixelFormat(
+              SHM::SHARED_TEXTURE_PIXEL_FORMAT, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+          mOffscreenBitmap.put()));
+    }
+    const auto width = textureSize.Width<float>();
+    const auto height = textureSize.Height<float>();
+    // Texture pixels to the rotated document, clockwise
+    auto turn = D2D1::Matrix3x2F::Identity();
+    switch (mQuarterTurns) {
+      case 1:
+        turn = D2D1::Matrix3x2F(0, 1, -1, 0, height, 0);
+        break;
+      case 2:
+        turn = D2D1::Matrix3x2F(-1, 0, 0, -1, width, height);
+        break;
+      case 3:
+        turn = D2D1::Matrix3x2F(0, -1, 1, 0, 0, width);
+        break;
+    }
+    const bool sideways = (mQuarterTurns % 2) != 0;
+    const auto toDisplayed = D2D1::Matrix3x2F::Scale(
+      layout.mContentSize.mWidth / (sideways ? height : width),
+      layout.mContentSize.mHeight / (sideways ? width : height));
+    const auto toScreen = D2D1::Matrix3x2F::Translation(
+      origin.mX + layout.mDestination.Left() - layout.mOffset.mX,
+      origin.mY + layout.mDestination.Top() - layout.mOffset.mY);
+
+    d2d->PushAxisAlignedClip(destination, D2D1_ANTIALIAS_MODE_ALIASED);
+    d2d->SetTransform(turn * toDisplayed * toScreen);
+    d2d->DrawBitmap(
+      mOffscreenBitmap.get(),
+      D2D1::RectF(0, 0, width, height),
+      1.0f,
+      D2D1_INTERPOLATION_MODE_LINEAR);
+    d2d->SetTransform(D2D1::Matrix3x2F::Identity());
+    d2d->PopAxisAlignedClip();
+  }
   d2d->SetTransform(D2D1::Matrix3x2F::Identity());
   const auto drawBar
     = [&](const FloatRect& track, const FloatRect& thumb, Target target) {

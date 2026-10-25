@@ -27,6 +27,8 @@ class D2DErrorRenderer;
 class TabView;
 class IUILayer;
 class KneeboardState;
+class MilitaryTabletHomeUILayer;
+class MilitaryTabletNotesUILayer;
 class MilitaryTabletViewportUILayer;
 class TabViewUILayer;
 enum class UserAction;
@@ -151,6 +153,8 @@ class KneeboardView final : private EventReceiver,
 
   std::vector<IUILayer*> mUILayers {};
   std::unique_ptr<MilitaryTabletViewportUILayer> mMilitaryTabletViewportUILayer;
+  std::unique_ptr<MilitaryTabletHomeUILayer> mMilitaryTabletHomeUILayer;
+  std::unique_ptr<MilitaryTabletNotesUILayer> mMilitaryTabletNotesUILayer;
   std::shared_ptr<IUILayer> mHeaderUILayer;
   std::unique_ptr<IUILayer> mFooterUILayer;
   std::shared_ptr<IUILayer> mBookmarksUILayer;

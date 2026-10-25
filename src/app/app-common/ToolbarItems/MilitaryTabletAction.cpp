@@ -26,6 +26,8 @@ std::string GlyphFor(Kind kind) {
       return "\uE740";// FullScreen
     case Kind::ResetZoom:
       return "\uE7A7";// Undo
+    case Kind::RotateDocument:
+      return "\uE7AD";// Rotate
   }
   return {};
 }
@@ -44,6 +46,8 @@ std::string LabelFor(Kind kind) {
       return _("Fit to width");
     case Kind::ResetZoom:
       return _("Reset zoom");
+    case Kind::RotateDocument:
+      return _("Rotate document");
   }
   return {};
 }
@@ -89,6 +93,7 @@ bool MilitaryTabletAction::IsEnabled() const {
     case Kind::ResetZoom:
       return viewport->IsZoomed();
     case Kind::Rotate:
+    case Kind::RotateDocument:
       return true;
   }
   return false;
@@ -124,6 +129,9 @@ task<void> MilitaryTabletAction::Execute() {
       break;
     case Kind::ResetZoom:
       viewport->ResetZoom();
+      break;
+    case Kind::RotateDocument:
+      viewport->RotateDocument();
       break;
     case Kind::Rotate:
       break;

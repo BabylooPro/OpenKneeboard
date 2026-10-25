@@ -174,23 +174,29 @@ task<void> FooterUILayer::Render(
   mLastRenderAt = std::chrono::time_point_cast<Duration>(Clock::now());
   mRenderState = RenderState::UpToDate;
 
-  const auto drawClock
-    = [&](const std::wstring& clock, DWRITE_TEXT_ALIGNMENT alignment) {
-        winrt::com_ptr<IDWriteTextLayout> clockLayout;
-        winrt::check_hresult(dwf->CreateTextLayout(
-          clock.c_str(),
-          static_cast<UINT32>(clock.size()),
-          clockFormat.get(),
-          float(mLastRenderSize->width - (2 * margin)),
-          float(footerHeight),
-          clockLayout.put()));
-        clockLayout->SetTextAlignment(alignment);
-        clockLayout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-        d2d->DrawTextLayout(
-          {margin + rect.Left<float>(), rect.Bottom<float>() - footerHeight},
-          clockLayout.get(),
-          foregroundBrush);
-      };
+  const auto drawClock = [&](
+                           const std::wstring& clock,
+                           DWRITE_TEXT_ALIGNMENT alignment,
+                           ID2D1Brush* brush = nullptr,
+                           float rightInset = 0.0f) {
+    winrt::com_ptr<IDWriteTextLayout> clockLayout;
+    winrt::check_hresult(dwf->CreateTextLayout(
+      clock.c_str(),
+      static_cast<UINT32>(clock.size()),
+      clockFormat.get(),
+      float(mLastRenderSize->width - (2 * margin)) - rightInset,
+      float(footerHeight),
+      clockLayout.put()));
+    clockLayout->SetTextAlignment(alignment);
+    clockLayout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    d2d->DrawTextLayout(
+      {margin + rect.Left<float>(), rect.Bottom<float>() - footerHeight},
+      clockLayout.get(),
+      brush ? brush : foregroundBrush);
+    DWRITE_TEXT_METRICS metrics {};
+    clockLayout->GetMetrics(&metrics);
+    return metrics.width;
+  };
 
   // Mission time
   if (mMissionTime) {
@@ -216,21 +222,22 @@ task<void> FooterUILayer::Render(
   }
 
   // Real time
-  auto realTime = std::format(
-    L"{:%T}", std::chrono::zoned_time(chrono::current_zone_or_utc(), now));
+  const auto clockWidth = drawClock(
+    std::format(
+      L"{:%T}", std::chrono::zoned_time(chrono::current_zone_or_utc(), now)),
+    DWRITE_TEXT_ALIGNMENT_TRAILING);
   if (militaryTablet && tabView) {
     const auto pageIDs = tabView->GetPageIDs();
     const auto page = std::ranges::find(pageIDs, tabView->GetPageID());
     // Centered, the page number runs into the mission time on a portrait tablet
     if (pageIDs.size() > 1 && page != pageIDs.end()) {
-      realTime = std::format(
-        L"{} / {}   {}",
-        (page - pageIDs.begin()) + 1,
-        pageIDs.size(),
-        realTime);
+      drawClock(
+        std::format(L"{} / {}", (page - pageIDs.begin()) + 1, pageIDs.size()),
+        DWRITE_TEXT_ALIGNMENT_TRAILING,
+        mMilitaryTabletBrushes.mAccent.get(),
+        clockWidth + (2.0f * margin));
     }
   }
-  drawClock(realTime, DWRITE_TEXT_ALIGNMENT_TRAILING);
 }
 
 void FooterUILayer::OnAPIEvent(const APIEvent& ev) {

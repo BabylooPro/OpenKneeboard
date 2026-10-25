@@ -85,6 +85,7 @@ InGameActions InGameActions::Create(
         militaryTabletAction(MilitaryTablet::FitToPage),
         militaryTabletAction(MilitaryTablet::FitToWidth),
         militaryTabletAction(MilitaryTablet::ResetZoom),
+        militaryTabletAction(MilitaryTablet::RotateDocument),
         std::make_shared<ToolbarSeparator>(),
       });
   }
