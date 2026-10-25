@@ -22,17 +22,15 @@ namespace OpenKneeboard {
 namespace {
 constexpr auto BezelFileName = "military-tablet-bezel.png";
 
-// Pixel geometry of the portrait bezel image; the screen area includes the
-// inner bevel shadow, while the content area is the fully-transparent part of it
+// Pixel geometry of the portrait bezel image; the screen is the dark glass
+// inside the inner rim, rounded corners included
 constexpr Geometry2D::Size<float> BezelSize {992.0f, 1586.0f};
 constexpr Geometry2D::Rect<float> ScreenRect {
-  {144.0f, 174.0f},
-  {709.0f, 1202.0f},
+  {127.0f, 171.0f},
+  {737.0f, 1222.0f},
 };
-constexpr Geometry2D::Rect<float> ContentRect {
-  {145.0f, 175.0f},
-  {690.0f, 1180.0f},
-};
+// Premultiplied channel value at or below which a screen pixel is glass
+constexpr uint8_t GlassMaxChannel = 16;
 constexpr Geometry2D::Rect<float> PowerKeyRect {
   {915.0f, 301.0f},
   {49.0f, 87.0f},
@@ -197,11 +195,10 @@ MilitaryTabletUILayer::Layout MilitaryTabletUILayer::GetLayout(
   const bool landscape = this->IsLandscape();
   const auto nextSize
     = nextMetrics.mPreferredSize.mPixelSize.StaticCast<float>();
-  const auto screenContent = Oriented(ContentRect, landscape);
+  const auto screen = Oriented(ScreenRect, landscape);
   const auto scale = std::max(
-    nextSize.mWidth / screenContent.Width(),
-    nextSize.mHeight / screenContent.Height());
-  const auto nextArea = screenContent * scale;
+    nextSize.mWidth / screen.Width(), nextSize.mHeight / screen.Height());
+  const auto nextArea = screen * scale;
 
   // The next layers stretch to fill the screen; this is where the unzoomed
   // content ends up inside it
@@ -235,7 +232,6 @@ MilitaryTabletUILayer::Layout MilitaryTabletUILayer::GetLayout(
 
   return {
     (Oriented(BezelSize, landscape) * scale).Rounded<uint32_t>(),
-    (Oriented(ScreenRect, landscape) * scale).Rounded<uint32_t>(),
     nextArea.Rounded<uint32_t>(),
     contentArea.Rounded<uint32_t>(),
   };
@@ -282,7 +278,7 @@ task<void> MilitaryTabletUILayer::Render(
     auto d2d = rc.d2d();
     d2d->SetTransform(D2D1::Matrix3x2F::Identity());
     d2d->FillRectangle(
-      toRenderRect(layout.mScreenArea), mDXResources->mBlackBrush.get());
+      toRenderRect(layout.mNextArea), mDXResources->mBlackBrush.get());
   }
 
   co_await first->Render(rc, rest, context, toRenderRect(layout.mNextArea));
@@ -388,11 +384,21 @@ void MilitaryTabletUILayer::LoadBezelBitmaps() {
 
   // The case itself is slightly translucent in the image, so the game would
   // show through it; make it opaque as if drawn over black, keeping only the
-  // soft outer edge. Lower-alpha pixels inside the case are all in the bevel
-  // around the screen, which is drawn over black anyway.
-  for (std::size_t i = 3; i < portrait.size(); i += 4) {
-    if (portrait[i] >= 128) {
-      portrait[i] = 255;
+  // soft outer edge. The dark glass is cleared instead, so the header, footer
+  // and content can reach the inner rim, which stays on top of them.
+  const auto screen = ScreenRect.Rounded<UINT>();
+  for (UINT y = 0; y < height; ++y) {
+    for (UINT x = 0; x < width; ++x) {
+      const auto pixel = &portrait[((y * width) + x) * 4];
+      const bool inScreen = x >= screen.Left() && x < screen.Right()
+        && y >= screen.Top() && y < screen.Bottom();
+      if (
+        inScreen
+        && std::max({pixel[0], pixel[1], pixel[2]}) <= GlassMaxChannel) {
+        std::memset(pixel, 0, 4);
+      } else if (pixel[3] >= 128) {
+        pixel[3] = 255;
+      }
     }
   }
 

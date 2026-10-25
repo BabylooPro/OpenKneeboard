@@ -213,22 +213,24 @@ task<void> FooterUILayer::Render(
     drawClock(
       std::format(L"OKB Frame {}", mSHM.GetFrameCountForMetricsOnly()),
       DWRITE_TEXT_ALIGNMENT_CENTER);
-  } else if (militaryTablet && tabView) {
-    const auto pageIDs = tabView->GetPageIDs();
-    const auto page = std::ranges::find(pageIDs, tabView->GetPageID());
-    if (pageIDs.size() > 1 && page != pageIDs.end()) {
-      drawClock(
-        std::format(
-          L"{} / {}", (page - pageIDs.begin()) + 1, pageIDs.size()),
-        DWRITE_TEXT_ALIGNMENT_CENTER);
-    }
   }
 
   // Real time
-  drawClock(
-    std::format(
-      L"{:%T}", std::chrono::zoned_time(chrono::current_zone_or_utc(), now)),
-    DWRITE_TEXT_ALIGNMENT_TRAILING);
+  auto realTime = std::format(
+    L"{:%T}", std::chrono::zoned_time(chrono::current_zone_or_utc(), now));
+  if (militaryTablet && tabView) {
+    const auto pageIDs = tabView->GetPageIDs();
+    const auto page = std::ranges::find(pageIDs, tabView->GetPageID());
+    // Centered, the page number runs into the mission time on a portrait tablet
+    if (pageIDs.size() > 1 && page != pageIDs.end()) {
+      realTime = std::format(
+        L"{} / {}   {}",
+        (page - pageIDs.begin()) + 1,
+        pageIDs.size(),
+        realTime);
+    }
+  }
+  drawClock(realTime, DWRITE_TEXT_ALIGNMENT_TRAILING);
 }
 
 void FooterUILayer::OnAPIEvent(const APIEvent& ev) {

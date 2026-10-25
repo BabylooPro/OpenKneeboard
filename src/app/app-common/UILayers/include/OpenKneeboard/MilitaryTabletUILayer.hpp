@@ -60,7 +60,6 @@ class MilitaryTabletUILayer final : public UILayerBase, private EventReceiver {
 
   struct Layout {
     PixelSize mCanvasSize;
-    PixelRect mScreenArea;
     PixelRect mNextArea;
     PixelRect mContentArea;
   };
